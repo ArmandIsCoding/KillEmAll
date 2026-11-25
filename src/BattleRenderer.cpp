@@ -1,8 +1,8 @@
 #include "BattleRenderer.hpp"
 #include "Combat.hpp"
 
+#include <SFML/Graphics/RenderStates.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
-#include <SFML/Graphics/Sprite.hpp>
 
 #include <algorithm>
 #include <array>
@@ -87,6 +87,51 @@ namespace
 		return value - period * std::floor(value / period);
 	}
 
+	void gunshipFlash(Batch& batch, const Explosion& effect)
+	{
+		const float remaining = 1.f - effect.age / 0.38f;
+		if (remaining <= 0.f)
+			return;
+
+		const Vec center = effect.position;
+		const float light = remaining * remaining;
+		const Color glow = faded({ 255, 193, 143 }, light * 0.58f);
+		const Color rim = faded(glow, 0.f);
+		const float radius = 108.f + (1.f - remaining) * 28.f;
+		constexpr int sides = 16;
+		Vec edge = center + Vec{ radius, 0.f };
+		for (int i = 1; i <= sides; ++i)
+		{
+			const float angle = tau * i / sides;
+			const Vec next = center + Vec{ radius * std::cos(angle), radius * 0.68f * std::sin(angle) };
+			batch.insert(batch.end(), { { center, glow }, { edge, rim }, { next, rim } });
+			edge = next;
+		}
+
+		// Keep each channel fixed as its light fades, even across several rendered frames.
+		unsigned noise = effect.seed;
+		const float side = center.x < sceneWidth * 0.5f ? 1.f : -1.f;
+		const float vertical = center.y < 138.f ? 1.f : -1.f;
+		Vec joint = center;
+		for (int i = 1; i <= 5; ++i)
+		{
+			const Vec next = center + Vec{ side * (i * 9.f + (sample(noise) - 0.5f) * 43.f),
+				vertical * (i * 19.f + sample(noise) * 8.f) };
+			const Vec direction = (next - joint).normalized();
+			streak(batch, joint, next, direction, 3.2f, faded({ 131, 192, 226 }, light * 0.46f));
+			streak(batch, joint, next, direction, 1.2f, faded({ 244, 253, 246 }, remaining));
+			if (i == 3)
+			{
+				const Vec elbow = joint + Vec{ -side * 21.f, vertical * 11.f };
+				const Vec tip = elbow + Vec{ side * 4.f, vertical * 22.f };
+				const Color spur = faded({ 192, 228, 238 }, light);
+				streak(batch, joint, elbow, (elbow - joint).normalized(), 1.f, spur);
+				streak(batch, elbow, tip, (tip - elbow).normalized(), 0.8f, spur);
+			}
+			joint = next;
+		}
+	}
+
 	void water(Batch& batch, float time)
 	{
 		// A closer band of moving glints and navigation buoys tracks faster than the coast.
@@ -154,6 +199,62 @@ namespace
 			{ right - halfHeight, tint,{ u + frameWidth, 0.f } },
 			{ right + halfHeight, tint,{ u + frameWidth, frameHeight } },
 			{ left + halfHeight, tint,{ u, frameHeight } });
+	}
+
+	void fireRateBadge(Batch& batch, const FireRatePickup& pickup)
+	{
+		const Vec p{ std::round(pickup.position.x), std::round(pickup.position.y) };
+		const float radius = Combat::pickupRadius;
+		const Color mint{ 90, 249, 208 };
+		const float jet = 8.f + 3.f * std::sin(pickup.age * 12.f);
+		for (float offset : {-4.f, 4.f})
+			rectangle(batch, p.x + radius - 5.f, p.y + offset - 1.f, jet, 2.f, mint);
+
+		const auto diamond = [&](float size, Color color) {
+			quad(batch, { p - Vec{ size, 0.f }, color }, { p - Vec{ 0.f, size }, color },
+				{ p + Vec{ size, 0.f }, color }, { p + Vec{ 0.f, size }, color });
+		};
+		diamond(radius + 2.f, { 14, 43, 52 });
+		diamond(radius, mint);
+		diamond(radius - 3.f, { 23, 82, 87 });
+
+		const Color white{ 245, 255, 218 };
+		for (float offset : {-6.f, 0.f})
+		{
+			const Vec tip = p + Vec{ offset + 4.f, 0.f };
+			streak(batch, p + Vec{ offset, -4.f }, tip, { 0.707f, 0.707f }, 1.3f, white);
+			streak(batch, tip, p + Vec{ offset, 4.f }, { -0.707f, 0.707f }, 1.3f, white);
+		}
+	}
+
+	void curvedTrail(Batch& batch, const Shot& shot, float fadingAge)
+	{
+		const float history = std::min(shot.age, Combat::trailLifetime - fadingAge);
+		if (history <= 0.f)
+			return;
+
+		const Vec acceleration{ 0.f, shot.verticalAcceleration };
+		const Color tint{ 255, static_cast<std::uint8_t>(173.f + 70.f * shot.trailPower),
+			static_cast<std::uint8_t>(69.f + 124.f * shot.trailPower) };
+		const float peakOpacity = 0.57f + 0.43f * shot.trailPower;
+		const float halfWidth = 1.4f + 0.75f * shot.trailPower;
+		const auto crossSection = [&](float lookback) {
+			const Vec pastVelocity = shot.velocity - acceleration * lookback;
+			const Vec center = shot.position - (shot.velocity + pastVelocity) * (0.5f * lookback);
+			const float strength = 1.f - (lookback + fadingAge) / Combat::trailLifetime;
+			const Vec side = pastVelocity.perpendicular().normalized() * (halfWidth * strength);
+			const Color amber = faded(tint, peakOpacity * strength * strength);
+			return std::array<sf::Vertex, 2>{ sf::Vertex{ center - side, amber }, sf::Vertex{ center + side, amber } };
+		};
+
+		constexpr int segments = 7;
+		auto previous = crossSection(0.f);
+		for (int i = 1; i <= segments; ++i)
+		{
+			const auto next = crossSection(history * i / segments);
+			quad(batch, previous[0], previous[1], next[1], next[0]);
+			previous = next;
+		}
 	}
 
 	void projectile(Batch& batch, const Shot& shot)
@@ -297,13 +398,36 @@ BattleRenderer::BattleRenderer(const std::filesystem::path& arcadeDirectory)
 	coast.setRepeated(true);
 }
 
-void BattleRenderer::drawBackground(sf::RenderTarget& target, float elapsedSeconds)
+void BattleRenderer::drawBackground(sf::RenderTarget& target, const Combat& combat)
 {
-	const int scroll = static_cast<int>(wrap(elapsedSeconds * 24.f, sceneWidth));
-	sf::Sprite landscape(coast, { { scroll, 0 },{ 960, 540 } });
-	target.draw(landscape);
+	const float elapsedSeconds = combat.elapsed();
+	const float scroll = std::floor(wrap(elapsedSeconds * 24.f, sceneWidth));
+	constexpr float margin = 4.f;
+	const float bottom = static_cast<float>(coast.getSize().y);
+	std::array<sf::Vertex, 8> landscape;
+	const auto row = [&](std::size_t first, float y, float textureY) {
+		landscape[first] = { { -margin, y }, Color::White, { scroll - margin, textureY } };
+		landscape[first + 1] = { { sceneWidth + margin, y }, Color::White, { scroll + sceneWidth + margin, textureY } };
+	};
+	// Extend the sky and water edge texels vertically while horizontal scrolling wraps.
+	row(0, -margin, 0.5f);
+	row(2, 0.5f, 0.5f);
+	row(4, bottom - 0.5f, bottom - 0.5f);
+	row(6, bottom + margin, bottom - 0.5f);
+	target.draw(landscape.data(), landscape.size(), sf::PrimitiveType::TriangleStrip, &coast);
 	geometry.clear();
 	water(geometry, elapsedSeconds);
+	for (const Explosion& effect : combat.explosions())
+		if (effect.kind == ExplosionKind::Gunship)
+			gunshipFlash(geometry, effect);
+	if (!combat.gameOver())
+	{
+		for (const Shot& shot : combat.shots())
+			if (shot.hasTrail())
+				curvedTrail(geometry, shot, 0.f);
+	}
+	for (const auto& trail : combat.fadingTrails())
+		curvedTrail(geometry, trail.shot, trail.age);
 	drawBatch(target, geometry);
 }
 
@@ -339,6 +463,8 @@ void BattleRenderer::drawEffects(sf::RenderTarget& target, const Combat& combat)
 	for (const Shot& shot : combat.shots())
 		if (shot.kind == ShotKind::Player || shot.kind == ShotKind::PlayerWave)
 			projectile(foreground, shot);
+	if (const auto& pickup = combat.fireRatePickup())
+		fireRateBadge(foreground, *pickup);
 	for (const Shot& shot : combat.shots())
 		if (shot.kind == ShotKind::Enemy || shot.kind == ShotKind::EnemyOrb)
 			projectile(foreground, shot);

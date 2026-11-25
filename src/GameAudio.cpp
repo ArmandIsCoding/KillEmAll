@@ -1,9 +1,11 @@
 #include "GameAudio.hpp"
 #include "Combat.hpp"
 
+#include <algorithm>
+
 GameAudio::GameAudio(const std::filesystem::path& folder)
     : musicData(folder / "coast-patrol.wav"), cannonData(folder / "cannon.wav"),
-      blastData(folder / "blast.wav"), impactData(folder / "impact.wav"),
+      blastData(folder / "blast.wav"), gunshipBlastData(folder / "gunship-blast.wav"), impactData(folder / "impact.wav"),
       powerData(folder / "power.wav"), music(musicData), cannon(cannonData),
       blast(blastData), wave(blastData), impact(impactData), upgrade(powerData)
 {
@@ -21,10 +23,10 @@ void GameAudio::restart()
 {
     music.stop();
     impact.stop();
+    gunshipBlasts.clear();
     lastVolley = 0;
     lastExplosion = 0;
     lastLives = 3;
-    lastPower = 1;
     setPlaying(true);
 }
 
@@ -38,6 +40,7 @@ void GameAudio::setPlaying(bool playing)
         music.pause();
         cannon.stop();
         blast.stop();
+        gunshipBlasts.clear();
         wave.stop();
         impact.stop();
         upgrade.stop();
@@ -50,33 +53,47 @@ void GameAudio::toggleMute()
     setPlaying(running);
 }
 
-void GameAudio::update(const Combat& combat)
+void GameAudio::playGunshipBlast()
 {
+    const auto freeVoice = std::find_if(gunshipBlasts.begin(), gunshipBlasts.end(), [](const sf::Sound& sound) {
+        return sound.getStatus() == sf::Sound::Status::Stopped;
+    });
+    auto& voice = freeVoice == gunshipBlasts.end() ? gunshipBlasts.emplace_back(gunshipBlastData) : *freeVoice;
+    voice.setVolume(53.f);
+    voice.play();
+}
+
+void GameAudio::update(const Combat& combat, bool weaponUpgraded)
+{
+    const bool audibleFrame = running && !silent;
     if (running && combat.gameOver())
     {
         setPlaying(false);
         if (!silent)
             impact.play();
     }
-    else if (!silent && running)
+    if (audibleFrame)
     {
-        if (combat.volleysFired() != lastVolley)
-            cannon.play();
         for (const auto& effect : combat.explosions())
         {
-            if (effect.seed > lastExplosion && effect.kind == ExplosionKind::Enemy)
+            if (effect.seed <= lastExplosion)
+                continue;
+            if (effect.kind == ExplosionKind::Gunship)
+                playGunshipBlast();
+            else if (running && effect.kind == ExplosionKind::Enemy)
                 blast.play();
-            if (effect.seed > lastExplosion && effect.kind == ExplosionKind::Wave)
+            else if (running && effect.kind == ExplosionKind::Wave)
                 wave.play();
         }
-        if (combat.lives() < lastLives)
+        if (running && combat.volleysFired() != lastVolley)
+            cannon.play();
+        if (running && combat.lives() < lastLives)
             impact.play();
-        if (combat.power() > lastPower)
+        if (running && weaponUpgraded)
             upgrade.play();
     }
     lastVolley = combat.volleysFired();
     if (!combat.explosions().empty())
         lastExplosion = combat.explosions().back().seed;
     lastLives = combat.lives();
-    lastPower = combat.power();
 }

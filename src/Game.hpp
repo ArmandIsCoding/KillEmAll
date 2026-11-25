@@ -43,6 +43,7 @@ private:
     std::set<Key> pressed;
     bool paused = false;
     float powerNotice = 0.f;
+    float pickupNotice = 0.f;
     float muzzleFlash = 0.f;
     int bestScore = 0;
 };

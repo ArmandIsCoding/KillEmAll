@@ -60,7 +60,7 @@ void Game::restart()
     combat.reset();
     pressed.clear();
     player.setPosition(launchPosition);
-    powerNotice = muzzleFlash = 0.f;
+    powerNotice = pickupNotice = muzzleFlash = 0.f;
     paused = false;
     if (audio)
         audio->restart();
@@ -110,15 +110,19 @@ void Game::update(float dt)
         return;
     const bool wasOver = combat.gameOver();
     const int oldPower = combat.power();
+    const auto oldPickups = combat.pickupsCollected();
     const auto oldVolley = combat.volleysFired();
     if (!wasOver)
         player.update(flightDirection(), sf::seconds(dt), fieldSize, precisionFlight());
     combat.update(dt, player.getPosition(), player.muzzleOffset());
     bestScore = std::max(bestScore, combat.score());
-    powerNotice = combat.power() > oldPower ? 1.6f : std::max(0.f, powerNotice - dt);
+    const bool leveledUp = combat.power() > oldPower;
+    const bool pickedUp = combat.pickupsCollected() > oldPickups;
+    powerNotice = leveledUp ? 1.6f : std::max(0.f, powerNotice - dt);
+    pickupNotice = pickedUp ? 1.6f : std::max(0.f, pickupNotice - dt);
     muzzleFlash = combat.volleysFired() != oldVolley ? 0.055f : std::max(0.f, muzzleFlash - dt);
     if (audio)
-        audio->update(combat);
+        audio->update(combat, leveledUp || pickedUp);
 }
 
 void Game::drawPlayer()
@@ -163,13 +167,15 @@ void Game::drawPlayer()
 void Game::draw()
 {
     window.clear({9, 13, 21});
-    window.setView(fieldView);
-    battle.drawBackground(window, combat.elapsed());
+    sf::View camera = fieldView;
+    camera.move(combat.screenShakeOffset());
+    window.setView(camera);
+    battle.drawBackground(window, combat);
     battle.drawEnemies(window, combat);
     drawPlayer();
     battle.drawEffects(window, combat);
     window.setView(hudView);
-    hud.draw(window, combat, paused, !audio || audio->muted(), bestScore, powerNotice);
+    hud.draw(window, combat, paused, !audio || audio->muted(), bestScore, powerNotice > 0.f, pickupNotice > 0.f);
     window.display();
 }
 

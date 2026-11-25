@@ -104,7 +104,7 @@ Hud::Hud(const std::filesystem::path& arcadeDir)
 }
 
 void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool muted,
-               int bestScore, float powerNoticeSeconds) const
+               int bestScore, bool powerNotice, bool pickupNotice) const
 {
     rect(target, 0, 0, 960, 60, ink);
     rect(target, 0, 2, 960, 2, steel);
@@ -126,13 +126,15 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
         target.draw(plane);
     }
 
-    const bool upgraded = powerNoticeSeconds > 0.f;
-    label(target, font, upgraded ? "ARMA MEJORADA" : "POTENCIA", 438, 9, 9, upgraded ? gold : dim);
+    if (pickupNotice)
+        label(target, font, "CADENCIA +50%", 438, 9, 9, cyan);
+    else
+        label(target, font, powerNotice ? "ARMA MEJORADA" : "POTENCIA", 438, 9, 9, powerNotice ? gold : dim);
     for (int i = 0; i < 5; ++i)
     {
         const float x = 438.f + i * 29.f;
         const bool active = i < combat.power();
-        rect(target, x, 27, 25, 15, active ? (upgraded ? gold : cyan) : seam);
+        rect(target, x, 27, 25, 15, active ? (powerNotice ? gold : cyan) : seam);
         rect(target, x + 2, active ? 38.f : 29.f, 21, active ? 2.f : 11.f, active ? steel : ink);
     }
 

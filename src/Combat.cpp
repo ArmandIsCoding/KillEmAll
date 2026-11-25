@@ -68,6 +68,22 @@ int Combat::power() const
     return 1 + static_cast<int>(std::upper_bound(upgrades.begin(), upgrades.end(), elapsed_) - upgrades.begin());
 }
 
+sf::Vector2f Combat::screenShakeOffset() const
+{
+    constexpr float duration = 0.26f;
+    // The newest heavy blast supplies one kick, even when several ships fall together.
+    const auto blast = std::find_if(explosions_.rbegin(), explosions_.rend(),
+        [](const Explosion& effect) { return effect.kind == ExplosionKind::Gunship; });
+    if (blast == explosions_.rend() || blast->age >= duration)
+        return {};
+
+    const float remaining = 1.f - blast->age / duration;
+    const float side = blast->seed % 2 ? 1.f : -1.f;
+    const float phase = 2.f * pi * blast->age;
+    return sf::Vector2f{side * 3.f * std::cos(13.f * phase), 1.8f * std::sin(16.f * phase)}
+           * (remaining * remaining);
+}
+
 void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffset)
 {
     if (!std::isfinite(dt) || dt <= 0.f)
@@ -81,10 +97,14 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
             explosion.age += slice;
         explosions_.erase(std::remove_if(explosions_.begin(), explosions_.end(),
             [](const Explosion& effect) { return effect.age >= effect.duration; }), explosions_.end());
+        for (auto& trail : fadingTrails_)
+            trail.age += slice;
+        fadingTrails_.erase(std::remove_if(fadingTrails_.begin(), fadingTrails_.end(),
+            [](const FadingTrail& trail) { return trail.age >= trailLifetime; }), fadingTrails_.end());
 
         if (!gameOver())
             step(slice, playerPosition, muzzleOffset);
-        else if (explosions_.empty())
+        else if (explosions_.empty() && fadingTrails_.empty())
             break;
 
         dt -= slice;
@@ -102,6 +122,7 @@ void Combat::step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffs
         spawnFormation();
         nextFormation_ += std::max(1.55f, 2.95f - elapsed_ * 0.022f);
     }
+    updatePickup(dt, playerPosition);
     updateWeapon(dt, playerPosition + muzzleOffset);
     updateEnemies(dt, playerPosition);
     updateShots(dt);
@@ -207,31 +228,99 @@ void Combat::fireEnemy(Enemy& enemy, sf::Vector2f playerPosition)
     ++enemy.volleys;
 }
 
-void Combat::updateWeapon(float dt, sf::Vector2f muzzle)
+float Combat::nextPickupDelay()
 {
-    nextPulse_ -= dt;
-    if (nextPulse_ > 0.f)
+    // Space out successive upgrades as their effect compounds.
+    return std::uniform_real_distribution<float>{5.f, 9.f}(pickupRandom_) * fireRateMultiplier_;
+}
+
+void Combat::updatePickup(float dt, sf::Vector2f playerPosition)
+{
+    if (!fireRatePickup_)
+    {
+        nextPickup_ -= dt;
+        if (nextPickup_ > 0.f)
+            return;
+
+        const float lane = std::uniform_real_distribution<float>{72.f, height - 72.f}(pickupRandom_);
+        fireRatePickup_ = FireRatePickup{{width + pickupRadius, lane}, lane, 0.f};
+    }
+
+    auto& pickup = *fireRatePickup_;
+    pickup.age += dt;
+    pickup.position.x -= 145.f * dt;
+    pickup.position.y = pickup.centerY + 20.f * std::sin(2.5f * pickup.age);
+
+    // The whole fuselage can collect a pickup, including the nose and tail.
+    const float dx = std::clamp(pickup.position.x - playerPosition.x, -36.f, 36.f);
+    if (overlaps(playerPosition + sf::Vector2f{dx, 0.f}, 14.f, pickup.position, pickupRadius))
+    {
+        ++pickupsCollected_;
+        fireRateMultiplier_ *= 1.5f;
+    }
+    else if (pickup.position.x >= -pickupRadius)
         return;
 
+    fireRatePickup_.reset();
+    nextPickup_ = nextPickupDelay();
+}
+
+void Combat::updateWeapon(float dt, sf::Vector2f muzzle)
+{
+    nextPulse_ -= dt * fireRateMultiplier_;
+    while (nextPulse_ <= 0.f)
+        fireVolley(muzzle);
+}
+
+void Combat::fireVolley(sf::Vector2f muzzle)
+{
+    constexpr float singleReload = 0.23f;
+    constexpr float burstSpacing = 0.105f;
+    constexpr float maxDeviation = 32.f * pi / 180.f;
     ++volleysFired_;
     const int level = power();
+    const int burstSize = level >= 5 ? 3 : (level >= 3 ? 2 : 1);
     if (burstRemaining_ == 0)
-        burstRemaining_ = level >= 5 ? 3 : (level >= 3 ? 2 : 1);
+        burstRemaining_ = burstSize;
     const int spread = level >= 5 ? 2 : level >= 2 ? 1 : 0;
-    for (int i = -spread; i <= spread; ++i)
-        shots_.push_back({ShotKind::Player, muzzle, velocityAt(i * (level >= 5 ? 0.18f : 0.12f), 630.f),
-                          3.f, 0.f, 0.f});
+    const int waveCount = level >= 4 ? 2 : 0;
+    const float reload = level >= 3 ? 0.31f : singleReload;
+    const float cycle = reload + (burstSize - 1) * burstSpacing;
+    const int shotsPerBurst = burstSize * (2 * spread + 1) + waveCount;
 
-    if (level >= 4 && burstRemaining_ == 1)
+    // Relative to the starting cannon, count every round in a full burst and reload.
+    const float relativeRate = fireRateMultiplier_ * shotsPerBurst * (singleReload / cycle);
+    const float extraRate = relativeRate - 1.f;
+    const float intensity = extraRate / (extraRate + 5.f);
+    const float deviation = maxDeviation * intensity;
+    const float curveChance = 0.16f + 0.42f * intensity;
+    const float curveAcceleration = 60.f + 430.f * intensity;
+    std::uniform_real_distribution<float> jitter(-deviation, deviation);
+    std::uniform_real_distribution<float> curveRoll(-1.f, 1.f);
+    for (int i = -spread; i <= spread; ++i)
+    {
+        const float angle = i * (level >= 5 ? 0.18f : 0.12f) + jitter(weaponRandom_);
+        Shot shot{ShotKind::Player, muzzle, velocityAt(angle, 630.f), 3.f, 0.f, 0.f};
+        const float roll = curveRoll(weaponRandom_);
+        if (std::abs(roll) < curveChance)
+        {
+            shot.verticalAcceleration = std::copysign(curveAcceleration, roll);
+            shot.trailPower = intensity;
+        }
+        shots_.push_back(shot);
+    }
+
+    if (waveCount > 0 && burstRemaining_ == 1)
     {
         for (float sign : {-1.f, 1.f})
         {
-            const float phase = static_cast<float>(volleysFired_ % 13) * 2.4f + sign;
-            shots_.push_back({ShotKind::PlayerWave, muzzle, {545.f, 0.f}, 3.5f, 0.f, sign, phase});
+            const auto velocity = velocityAt(jitter(weaponRandom_), 545.f);
+            const float phase = std::uniform_real_distribution<float>{0.f, 2.f * pi}(weaponRandom_);
+            shots_.push_back({ShotKind::PlayerWave, muzzle, velocity, 3.5f, 0.f, sign, phase, velocity.y});
         }
     }
     --burstRemaining_;
-    nextPulse_ += burstRemaining_ > 0 ? 0.105f : (level >= 3 ? 0.31f : 0.23f);
+    nextPulse_ += burstRemaining_ > 0 ? burstSpacing : reload;
 }
 
 void Combat::updateShots(float dt)
@@ -243,9 +332,15 @@ void Combat::updateShots(float dt)
         {
             const float before = waveOffset(shot.age - dt, shot.wavePhase);
             const float after = waveOffset(shot.age, shot.wavePhase);
-            shot.velocity.y = shot.waveSign * (after - before) / dt;
+            shot.velocity.y = shot.waveDriftY + shot.waveSign * (after - before) / dt;
         }
         shot.position += shot.velocity * dt;
+        if (shot.verticalAcceleration != 0.f)
+        {
+            const float changeInSpeedY = shot.verticalAcceleration * dt;
+            shot.position.y += 0.5f * changeInSpeedY * dt;
+            shot.velocity.y += changeInSpeedY;
+        }
     }
 }
 
@@ -253,6 +348,11 @@ void Combat::explode(sf::Vector2f position, ExplosionKind kind)
 {
     const float duration = kind == ExplosionKind::Wave ? 0.27f : kind == ExplosionKind::Player ? 0.75f : 0.45f;
     explosions_.push_back({position, 0.f, duration, kind, ++explosionSerial_});
+}
+
+void Combat::explodeEnemy(const Enemy& enemy)
+{
+    explode(enemy.position, enemy.kind == EnemyKind::Gunship ? ExplosionKind::Gunship : ExplosionKind::Enemy);
 }
 
 void Combat::hitPlayer(sf::Vector2f position)
@@ -271,7 +371,7 @@ void Combat::damage(Enemy& enemy, int amount)
     if (enemy.health == 0)
     {
         score_ += stats(enemy.kind).points;
-        explode(enemy.position, ExplosionKind::Enemy);
+        explodeEnemy(enemy);
     }
 }
 
@@ -287,7 +387,7 @@ void Combat::hitEnemies(Shot& shot)
     {
         if (hit == enemies_.end() && shot.age < 0.95f)
             return;
-        shot.age = -1.f;
+        shot.spent = true;
         const bool onScreen = shot.position.x >= 0.f && shot.position.x <= width &&
                               shot.position.y >= 0.f && shot.position.y <= height;
         if (hit == enemies_.end() && !onScreen)
@@ -299,7 +399,7 @@ void Combat::hitEnemies(Shot& shot)
     }
     else if (hit != enemies_.end())
     {
-        shot.age = -1.f;
+        shot.spent = true;
         damage(*hit, 1);
     }
 }
@@ -312,7 +412,7 @@ void Combat::collide(sf::Vector2f playerPosition)
             hitEnemies(shot);
         else if (overlaps(shot.position, shot.radius, playerPosition, playerHitRadius))
         {
-            shot.age = -1.f;
+            shot.spent = true;
             hitPlayer(playerPosition);
         }
     }
@@ -322,13 +422,16 @@ void Combat::collide(sf::Vector2f playerPosition)
             overlaps(enemy.position, enemy.radius, playerPosition, playerHitRadius))
         {
             enemy.health = 0;
-            explode(enemy.position, ExplosionKind::Enemy);
+            explodeEnemy(enemy);
             hitPlayer(playerPosition);
         }
     }
-    shots_.erase(std::remove_if(shots_.begin(), shots_.end(), [](const Shot& shot) {
-        return shot.age < 0.f || shot.position.x < -28.f || shot.position.x > width + 28.f ||
-               shot.position.y < -28.f || shot.position.y > height + 28.f;
+    shots_.erase(std::remove_if(shots_.begin(), shots_.end(), [this](const Shot& shot) {
+        const bool remove = shot.spent || shot.position.x < -28.f || shot.position.x > width + 28.f ||
+                            shot.position.y < -28.f || shot.position.y > height + 28.f;
+        if ((remove || gameOver()) && shot.hasTrail())
+            fadingTrails_.push_back({shot, 0.f});
+        return remove;
     }), shots_.end());
     enemies_.erase(std::remove_if(enemies_.begin(), enemies_.end(), [](const Enemy& enemy) {
         return enemy.health <= 0 || enemy.position.x < -enemy.radius;

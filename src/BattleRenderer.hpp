@@ -14,7 +14,7 @@ class BattleRenderer
 public:
     explicit BattleRenderer(const std::filesystem::path& arcadeDirectory);
 
-    void drawBackground(sf::RenderTarget& target, float elapsedSeconds);
+    void drawBackground(sf::RenderTarget& target, const Combat& combat);
     void drawEnemies(sf::RenderTarget& target, const Combat& combat);
     void drawEffects(sf::RenderTarget& target, const Combat& combat);
 
