@@ -206,7 +206,17 @@ namespace
 		const Vec center{ std::round(enemy.position.x), std::round(enemy.position.y) };
 		const float halfWidth = std::round(enemy.radius * 1.6f) + 3.f;
 		const float halfHeight = std::round(enemy.radius * 0.75f) + 3.f;
-		const Color amber{ 255, 199, 84 }, ivory{ 255, 243, 193 }, ink{ 41, 31, 37 };
+		const float healthFraction = static_cast<float>(enemy.health) / enemy.maxHealth();
+		const bool critical = healthFraction <= 0.25f || enemy.health == 1;
+		Color signal{ 132, 247, 142 };
+		if (critical)
+			signal = { 255, 86, 76 };
+		else if (healthFraction <= 0.60f)
+			signal = { 255, 199, 84 };
+		const float opacity = critical && wrap(enemy.age, 0.44f) >= 0.24f ? 0.38f : 1.f;
+		signal = faded(signal, opacity);
+		const Color ivory = faded({ 255, 243, 193 }, opacity);
+		const Color ink{ 41, 31, 37 };
 		// Open corners frame the wings. The dark edge keeps them legible in a blast.
 		for (float x : {-halfWidth, halfWidth})
 		{
@@ -218,8 +228,8 @@ namespace
 				const float armY = y < 0.f ? top : top - 5.f;
 				rectangle(batch, armX - 1.f, top - 1.f, 11.f, 4.f, ink);
 				rectangle(batch, left - 1.f, armY - 1.f, 4.f, 9.f, ink);
-				rectangle(batch, armX, top, 9.f, 2.f, amber);
-				rectangle(batch, left, armY, 2.f, 7.f, amber);
+				rectangle(batch, armX, top, 9.f, 2.f, signal);
+				rectangle(batch, left, armY, 2.f, 7.f, signal);
 				rectangle(batch, left, top, 2.f, 2.f, ivory);
 			}
 		}

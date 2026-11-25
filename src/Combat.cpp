@@ -89,6 +89,11 @@ void steerShot(Shot& shot, const Enemy& target, float dt)
 }
 }
 
+int Enemy::maxHealth() const
+{
+    return stats(kind).health;
+}
+
 Shot::TrailSample Shot::trailSample(float lookback) const
 {
     const float when = age - lookback;
@@ -137,13 +142,13 @@ const Enemy* Combat::guidanceTarget() const
             enemy.position.y < 0.f || enemy.position.y > height)
             continue;
         // Equal classes retain formation order instead of switching on every hit.
-        if (!best || stats(enemy.kind).health > stats(best->kind).health)
+        if (!best || enemy.maxHealth() > best->maxHealth())
             best = &enemy;
     }
     return best;
 }
 
-void Combat::PowerMeter::advance(float realDt, float useSeconds, float refillSeconds)
+void Combat::PowerMeter::advance(float realDt, float worldTime, float useSeconds, float refillSeconds)
 {
     if (active())
     {
@@ -162,6 +167,7 @@ void Combat::PowerMeter::advance(float realDt, float useSeconds, float refillSec
             charge = 1.0;
             depleted = false;
             ++refills;
+            lastRefillTime = worldTime;
         }
     }
 }
@@ -209,8 +215,8 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
         if (!gameOver())
         {
             step(slice, playerPosition, muzzleOffset);
-            precision_.advance(realSlice, 4.f, 8.f);
-            guidance_.advance(realSlice, 5.f, 10.f);
+            precision_.advance(realSlice, elapsed_, 4.f, 8.f);
+            guidance_.advance(realSlice, elapsed_, 5.f, 10.f);
         }
         explosions_.erase(std::remove_if(explosions_.begin(), explosions_.end(), [this](const Explosion& effect) {
             if (effect.age < effect.duration)

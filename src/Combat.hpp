@@ -3,6 +3,7 @@
 #include <SFML/System/Vector2.hpp>
 
 #include <deque>
+#include <limits>
 #include <optional>
 #include <random>
 #include <unordered_map>
@@ -26,6 +27,8 @@ struct Enemy
     unsigned volleys;
     float hitFlash;
     std::vector<unsigned> shockwavesHit{};
+
+    int maxHealth() const;
 };
 
 struct Shot
@@ -110,6 +113,8 @@ public:
     bool guidanceRecharging() const { return guidance_.depleted; }
     unsigned precisionRefills() const { return precision_.refills; }
     unsigned guidanceRefills() const { return guidance_.refills; }
+    float precisionRefillAge() const { return elapsed_ - precision_.lastRefillTime; }
+    float guidanceRefillAge() const { return elapsed_ - guidance_.lastRefillTime; }
     float timeScale() const { return precisionActive() ? 0.45f : 1.f; }
     void update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffset = {49.f, 0.f});
     void reset();
@@ -139,11 +144,12 @@ private:
     {
         double charge = 1.0;
         unsigned refills = 0;
+        float lastRefillTime = -std::numeric_limits<float>::infinity();
         bool held = false;
         bool depleted = false;
 
         bool active() const { return held && !depleted; }
-        void advance(float realDt, float useSeconds, float refillSeconds);
+        void advance(float realDt, float worldTime, float useSeconds, float refillSeconds);
     };
 
     struct Chain

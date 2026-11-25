@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <string>
 
 namespace
@@ -87,7 +88,8 @@ void milestoneNotice(sf::RenderTarget& target, const sf::Font& font, int milesto
 }
 
 void abilityMeter(sf::RenderTarget& target, const sf::Font& font, const sf::String& key,
-                  const sf::String& name, float y, float charge, bool active, bool recharging, sf::Color accent)
+                  const sf::String& name, float y, float charge, bool active, bool recharging,
+                  sf::Color accent, float flash)
 {
     rect(target, 440, y, 68, 18, active ? accent : seam);
     rect(target, 441, y + 1, 66, 16, active ? accent : steel);
@@ -96,11 +98,16 @@ void abilityMeter(sf::RenderTarget& target, const sf::Font& font, const sf::Stri
     label(target, font, name, 516, y + 5, 9, active ? accent : dim);
 
     constexpr float width = 76.f;
+    if (flash > 0.f)
+        rect(target, 602, y + 1, width + 8, 16,
+             {accent.r, accent.g, accent.b, static_cast<std::uint8_t>(180.f * flash)});
     rect(target, 604, y + 3, width + 4, 12, active ? ivory : seam);
     rect(target, 606, y + 5, width, 8, ink);
     const float fill = std::round(width * std::clamp(charge, 0.f, 1.f));
     if (fill > 0.f)
         rect(target, 606, y + 5, fill, 8, recharging ? seam : accent);
+    if (flash > 0.f)
+        rect(target, 606, y + 5, fill, 8, {255, 255, 245, static_cast<std::uint8_t>(255.f * flash)});
     for (float tick : {19.f, 38.f, 57.f})
         rect(target, 606 + tick, y + 5, 1, 8, ink);
     if (recharging)
@@ -213,10 +220,15 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     }
 
     const bool flying = !paused && !combat.gameOver();
+    const auto refillFlash = [flying](float age) {
+        return flying ? std::clamp((0.30f - age) / 0.24f, 0.f, 1.f) : 0.f;
+    };
     abilityMeter(target, font, "SHIFT", U"PRECISI\u00d3N", 7, combat.precisionCharge(),
-                 flying && combat.precisionActive(), combat.precisionRecharging(), cyan);
+                 flying && combat.precisionActive(), combat.precisionRecharging(),
+                 cyan, refillFlash(combat.precisionRefillAge()));
     abilityMeter(target, font, "ESPACIO", "GUIADO", 31, combat.guidanceCharge(),
-                 flying && combat.guidanceActive(), combat.guidanceRecharging(), gold);
+                 flying && combat.guidanceActive(), combat.guidanceRecharging(),
+                 gold, refillFlash(combat.guidanceRefillAge()));
     label(target, font, "DISTANCIA", 707, 9, 9, dim);
     const auto meters = std::to_string(static_cast<long long>(combat.distance())) + " m";
     label(target, font, meters, 707, 28, std::min(15u, 121u / static_cast<unsigned>(meters.size())), ivory);
