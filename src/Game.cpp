@@ -47,6 +47,8 @@ void Game::enableAudio()
     try
     {
         audio.emplace(audioDirectory);
+        // Enabling audio mid-flight starts with the next combat event.
+        audio->update(combat, false);
         audio->setPlaying(!paused && !combat.gameOver());
     }
     catch (const std::exception& error)

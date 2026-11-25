@@ -7,6 +7,8 @@
 #include <SFML/Graphics/Text.hpp>
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <string>
 
 namespace
@@ -43,6 +45,30 @@ std::string scoreNumber(int points)
     if (number.size() < 6)
         number.insert(0, 6 - number.size(), '0');
     return number;
+}
+
+void comboNotice(sf::RenderTarget& target, const sf::Font& font, Combo combo)
+{
+    struct Tier { unsigned size; sf::Color color; };
+    constexpr std::array<Tier, 9> tiers{{
+        {14, cyan}, {17, {184, 237, 126}}, {20, gold}, {23, {255, 140, 102}},
+        {26, {255, 139, 197}}, {28, {255, 161, 216}}, {30, {255, 190, 221}},
+        {31, {255, 216, 210}}, {32, ivory}
+    }};
+    const auto [size, color] = tiers[std::min(combo.kills - 2, static_cast<int>(tiers.size()) - 1)];
+    const auto count = "COMBO x" + std::to_string(combo.kills);
+    const auto bonus = "+" + std::to_string(combo.bonus);
+    constexpr unsigned bonusSize = 12;
+    constexpr float left = 22.f, top = 60.f;
+    const float height = size + 10.f;
+    // Press Start 2P advances one character size per glyph.
+    const float divider = left + 16.f + static_cast<float>(count.size() * size);
+    const float width = divider - left + 16.f + static_cast<float>(bonus.size() * bonusSize);
+    rect(target, left, top, width, height, {15, 27, 34, 236});
+    rect(target, left, top, 3.f, height, color);
+    rect(target, divider, top + 6.f, 1.f, height - 12.f, seam);
+    label(target, font, count, left + 9.f, top + 6.f, size, color);
+    label(target, font, bonus, divider + 8.f, top + std::round((height - bonusSize) * 0.5f) + 1.f, bonusSize, ivory);
 }
 
 void keycap(sf::RenderTarget& target, const sf::Font& font, const sf::String& name,
@@ -117,13 +143,7 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     label(target, font, scoreNumber(combat.score()), 26, 25, 23, gold);
     const auto combo = combat.combo();
     if (combo.kills >= 2 && !paused)
-    {
-        const auto notice = "COMBO x" + std::to_string(combo.kills) + " +" + std::to_string(combo.bonus);
-        const auto size = std::min(10u, 134u / static_cast<unsigned>(notice.size()));
-        rect(target, 86, 5, 143, 16, steel);
-        rect(target, 86, 5, 2, 16, cyan);
-        label(target, font, notice, 92, 8, size, cyan);
-    }
+        comboNotice(target, font, combo);
 
     label(target, font, "VIDAS", 260, 9, 9, dim);
     sf::Sprite plane(lifeTexture);

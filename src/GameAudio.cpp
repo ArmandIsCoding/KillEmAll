@@ -6,8 +6,9 @@
 GameAudio::GameAudio(const std::filesystem::path& folder)
     : musicData(folder / "coast-patrol.wav"), cannonData(folder / "cannon.wav"),
       blastData(folder / "blast.wav"), gunshipBlastData(folder / "gunship-blast.wav"), impactData(folder / "impact.wav"),
-      powerData(folder / "power.wav"), music(musicData), cannon(cannonData),
-      blast(blastData), wave(blastData), impact(impactData), upgrade(powerData)
+      powerData(folder / "power.wav"), comboData(folder / "combo-note.wav"),
+      music(musicData), cannon(cannonData), blast(blastData), wave(blastData),
+      impact(impactData), upgrade(powerData), comboNote(comboData)
 {
     music.setLooping(true);
     music.setVolume(24.f);
@@ -17,13 +18,13 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
     wave.setPitch(1.65f);
     impact.setVolume(59.f);
     upgrade.setVolume(42.f);
+    comboNote.setVolume(50.f);
 }
 
 void GameAudio::restart()
 {
+    setPlaying(false);
     music.stop();
-    impact.stop();
-    gunshipBlasts.clear();
     lastVolley = 0;
     lastExplosion = 0;
     lastLives = 3;
@@ -37,14 +38,21 @@ void GameAudio::setPlaying(bool playing)
         music.play();
     else
     {
-        music.pause();
-        cannon.stop();
-        blast.stop();
-        gunshipBlasts.clear();
-        wave.stop();
-        impact.stop();
-        upgrade.stop();
+        stopBattleSounds();
+        comboNote.stop();
+        pendingComboNotes.clear();
     }
+}
+
+void GameAudio::stopBattleSounds()
+{
+    music.pause();
+    cannon.stop();
+    blast.stop();
+    gunshipBlasts.clear();
+    wave.stop();
+    impact.stop();
+    upgrade.stop();
 }
 
 void GameAudio::toggleMute()
@@ -68,7 +76,8 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
     const bool audibleFrame = running && !silent;
     if (running && combat.gameOver())
     {
-        setPlaying(false);
+        running = false;
+        stopBattleSounds();
         if (!silent)
             impact.play();
     }
@@ -84,6 +93,8 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
                 blast.play();
             else if (running && effect.kind == ExplosionKind::Wave)
                 wave.play();
+            if (effect.comboKills > 0)
+                pendingComboNotes.push_back(effect.comboKills);
         }
         if (running && combat.volleysFired() != lastVolley)
             cannon.play();
@@ -91,6 +102,14 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
             impact.play();
         if (running && weaponUpgraded)
             upgrade.play();
+    }
+    // Separate the attacks so even kills in one frame form an audible run of notes.
+    if (!pendingComboNotes.empty() && comboNote.getStatus() == sf::Sound::Status::Stopped)
+    {
+        const float steps = static_cast<float>(pendingComboNotes.front() - 1);
+        pendingComboNotes.pop_front();
+        comboNote.setPitch(1.f + steps / (12.f + steps));
+        comboNote.play();
     }
     lastVolley = combat.volleysFired();
     if (!combat.explosions().empty())

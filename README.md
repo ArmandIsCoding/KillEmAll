@@ -4,7 +4,7 @@ Un *bullet hell* de desplazamiento horizontal hecho en **C++17 y SFML 3.1**. Ten
 
 [Compilar y jugar en Windows](#compilar-en-visual-studio) · [Controles](#controles)
 
-![Cuatro naves explotan en cadena sobre el puerto. Junto al puntaje, el contador sube hasta COMBO x4 y muestra 600 puntos extra.](docs/media/combate.gif)
+![Cuatro naves explotan en cadena sobre el puerto. Debajo del puntaje, el contador crece y cambia de turquesa a verde y a dorado al llegar a COMBO x4 +600.](docs/media/combate.gif)
 
 ## Los primeros 45 segundos
 
@@ -41,7 +41,9 @@ El **explorador** apunta a tu posición. El **interceptor** dispara en abanicos 
 
 Cuando cae un blindado, un relámpago ilumina la costa y la cámara se sacude al ritmo de la explosión grave. La **onda expansiva ámbar** barre las balas y los orbes enemigos justo cuando el anillo los alcanza. Cerca del casco, el golpe puede destruir otro blindado intacto. En la periferia hace menos daño y puede rematar una nave averiada. Después de los 30 segundos, algunos convoyes traen dos blindados juntos. Derribá uno para encadenar la segunda explosión y sumar los puntos de ambas bajas.
 
-El blindado que inicia la cadena cuenta como primera baja. Si su onda derriba otra nave, aparece **COMBO x2 +100** junto al puntaje. La tercera baja de la misma cadena agrega 200 puntos extra y la cuarta agrega 300. En **COMBO x4 +600**, esos 600 ya están incluidos en tu puntaje, además del valor de cada enemigo. Las bajas por las ondas de los blindados que explotan en cadena también cuentan para ese combo.
+El blindado que inicia la cadena marca la primera nota. Si su onda derriba otra nave, aparece **COMBO x2 +100** debajo del puntaje. El contador crece y pasa de turquesa en x2 a dorado en x4, rosa en x6 y marfil en x10, donde alcanza su tamaño máximo. Cada baja de la cadena suena un poco más aguda que la anterior. Si varias naves explotan juntas, las notas suenan una detrás de otra. [Escuchá las cuatro notas de un combo x4](docs/media/combo-x4.wav).
+
+La tercera baja agrega 200 puntos extra y la cuarta agrega 300. Cuando ves **COMBO x4 +600** en dorado, esos 600 ya están incluidos en tu puntaje, además del valor de cada enemigo. Las bajas por las ondas de los blindados que explotan en cadena también cuentan para ese combo.
 
 ## Compilar en Visual Studio
 

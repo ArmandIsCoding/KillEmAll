@@ -377,6 +377,10 @@ void Combat::explode(sf::Vector2f position, ExplosionKind kind, unsigned chainId
 void Combat::explodeEnemy(const Enemy& enemy, unsigned chainId)
 {
     explode(enemy.position, enemy.kind == EnemyKind::Gunship ? ExplosionKind::Gunship : ExplosionKind::Enemy, chainId);
+    if (chainId != 0)
+        explosions_.back().comboKills = chains_.at(chainId).tally.kills;
+    else if (enemy.kind == EnemyKind::Gunship)
+        explosions_.back().comboKills = 1;
 }
 
 void Combat::hitPlayer(sf::Vector2f position)

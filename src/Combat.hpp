@@ -66,6 +66,7 @@ struct Explosion
     unsigned seed;
     float sweptRadius = 0.f;
     unsigned chainId = 0;
+    int comboKills = 0;
 
     float shockwaveRadius() const;
 };

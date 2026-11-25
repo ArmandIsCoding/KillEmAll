@@ -20,10 +20,12 @@ public:
 
 private:
     void playGunshipBlast();
+    void stopBattleSounds();
 
-    sf::SoundBuffer musicData, cannonData, blastData, gunshipBlastData, impactData, powerData;
-    sf::Sound music, cannon, blast, wave, impact, upgrade;
+    sf::SoundBuffer musicData, cannonData, blastData, gunshipBlastData, impactData, powerData, comboData;
+    sf::Sound music, cannon, blast, wave, impact, upgrade, comboNote;
     std::deque<sf::Sound> gunshipBlasts;
+    std::deque<int> pendingComboNotes;
     unsigned int lastVolley = 0;
     unsigned int lastExplosion = 0;
     int lastLives = 3;
