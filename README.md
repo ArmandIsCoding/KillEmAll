@@ -4,7 +4,7 @@ Un *bullet hell* de desplazamiento horizontal hecho en **C++17 y SFML 3.1**. Ten
 
 [Compilar y jugar en Windows](#compilar-en-visual-studio) · [Controles](#controles)
 
-![El avión esquiva proyectiles fucsias sobre el puerto. Al llegar a potencia cinco, sus disparos dorados se abren en abanico y los verdes estallan en el aire.](docs/media/combate.gif)
+![El avión dispara sobre el puerto. Las estelas doradas sueltan chispas y un anillo ámbar se expande al estallar el blindado.](docs/media/combate.gif)
 
 ## Los primeros 45 segundos
 
@@ -20,7 +20,7 @@ El arma mejora por **tiempo de vuelo**. Derribar enemigos suma puntos. La costa 
 
 De vez en cuando cruza la pantalla un **potenciador turquesa con dos flechas**. Tocá uno con tu avión para multiplicar por **1,5** la cantidad de proyectiles que disparás por segundo. Las mejoras se acumulan hasta el fin de la partida. Con dos potenciadores, la cadencia es **2,25 veces** la habitual para ese nivel de potencia. Cuantos más recogés, más tarda en aparecer el siguiente.
 
-Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno vuelo y dejan una estela que se afina y se apaga detrás de ellos. Cuantos más proyectiles disparás por segundo, más frecuentes y pronunciados se vuelven esos arcos y más brillan sus estelas. También aumenta la variedad de ángulos de salida. Los verdes siguen su propio zigzag.
+Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno vuelo y dejan una estela que se afina y se apaga detrás de ellos. Con más proyectiles por segundo, el ángulo de salida varía más, los arcos son más frecuentes y pronunciados y las estelas brillan más. Al llegar al nivel cinco, o antes si juntás suficientes potenciadores, las estelas también desprenden chispas doradas. Los verdes siguen su propio zigzag.
 
 ## Controles
 
@@ -37,7 +37,7 @@ Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno 
 
 ![De izquierda a derecha, tu avión, el explorador rojo de 100 puntos, el interceptor de 200 y el blindado de 500.](docs/media/hangar.png)
 
-El **explorador** apunta a tu posición. El **interceptor** dispara en abanicos de tres. El **blindado** llega escoltado y alterna el ángulo de sus abanicos de siete proyectiles. El hueco por el que pasaste la primera vez cambia de lugar en la siguiente descarga. Cuando cae un blindado, la explosión grave sacude la cámara por un instante y un relámpago ilumina la costa.
+El **explorador** apunta a tu posición. El **interceptor** dispara en abanicos de tres. El **blindado** llega escoltado y alterna el ángulo de sus abanicos de siete proyectiles. El hueco por el que pasaste la primera vez cambia de lugar en la siguiente descarga. Cuando cae un blindado, un relámpago ilumina la costa y una onda expansiva ámbar se abre desde el casco. La cámara se sacude al ritmo de la explosión grave.
 
 ## Compilar en Visual Studio
 

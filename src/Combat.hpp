@@ -71,6 +71,7 @@ public:
     static constexpr float pickupRadius = 14.f;
     static constexpr float waveBlastRadius = 39.f;
     static constexpr float trailLifetime = 0.38f;
+    static constexpr float gunshipShakeAmplitude = 7.f;
 
     void update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffset = {49.f, 0.f});
     void reset();

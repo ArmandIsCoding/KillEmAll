@@ -70,7 +70,7 @@ int Combat::power() const
 
 sf::Vector2f Combat::screenShakeOffset() const
 {
-    constexpr float duration = 0.26f;
+    constexpr float duration = 0.36f;
     // The newest heavy blast supplies one kick, even when several ships fall together.
     const auto blast = std::find_if(explosions_.rbegin(), explosions_.rend(),
         [](const Explosion& effect) { return effect.kind == ExplosionKind::Gunship; });
@@ -80,8 +80,8 @@ sf::Vector2f Combat::screenShakeOffset() const
     const float remaining = 1.f - blast->age / duration;
     const float side = blast->seed % 2 ? 1.f : -1.f;
     const float phase = 2.f * pi * blast->age;
-    return sf::Vector2f{side * 3.f * std::cos(13.f * phase), 1.8f * std::sin(16.f * phase)}
-           * (remaining * remaining);
+    return sf::Vector2f{side * std::cos(13.f * phase), 0.6f * std::sin(16.f * phase)}
+           * (gunshipShakeAmplitude * remaining * remaining);
 }
 
 void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffset)

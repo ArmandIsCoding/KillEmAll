@@ -238,9 +238,12 @@ namespace
 			static_cast<std::uint8_t>(69.f + 124.f * shot.trailPower) };
 		const float peakOpacity = 0.57f + 0.43f * shot.trailPower;
 		const float halfWidth = 1.4f + 0.75f * shot.trailPower;
+		const auto positionAt = [&](float lookback) {
+			return shot.position - (shot.velocity - acceleration * (0.5f * lookback)) * lookback;
+		};
 		const auto crossSection = [&](float lookback) {
 			const Vec pastVelocity = shot.velocity - acceleration * lookback;
-			const Vec center = shot.position - (shot.velocity + pastVelocity) * (0.5f * lookback);
+			const Vec center = positionAt(lookback);
 			const float strength = 1.f - (lookback + fadingAge) / Combat::trailLifetime;
 			const Vec side = pastVelocity.perpendicular().normalized() * (halfWidth * strength);
 			const Color amber = faded(tint, peakOpacity * strength * strength);
@@ -254,6 +257,34 @@ namespace
 			const auto next = crossSection(history * i / segments);
 			quad(batch, previous[0], previous[1], next[1], next[0]);
 			previous = next;
+		}
+
+		if (shot.trailPower < 0.55f)
+			return;
+
+		// Horizontal speed stays constant. Use it to stagger emission times across a volley.
+		constexpr float spacing = 0.10f;
+		constexpr float lifetime = 0.24f;
+		unsigned seed = static_cast<unsigned>(std::abs(shot.velocity.x) * 1024.f);
+		const float firstSpark = spacing * (0.25f + 0.75f * sample(seed));
+		const int latest = static_cast<int>(std::floor((shot.age - firstSpark) / spacing));
+		for (int i = latest; i >= 0; --i)
+		{
+			const float lookback = shot.age - (firstSpark + i * spacing);
+			const float age = lookback + fadingAge;
+			if (age >= lifetime)
+				break;
+
+			unsigned noise = seed + static_cast<unsigned>(i) * 2654435761u;
+			const float side = (noise & 1u) ? 1.f : -1.f;
+			const float outwardSpeed = side * (48.f + 42.f * sample(noise));
+			const Vec direction = (shot.velocity - acceleration * lookback).normalized();
+			const Vec drift = direction * 16.f + direction.perpendicular() * outwardSpeed;
+			const Vec spark = positionAt(lookback) + drift * age;
+			const float remaining = 1.f - age / lifetime;
+			const float size = 1.f + (1.4f + shot.trailPower) * remaining;
+			rectangle(batch, spark.x - size * 0.5f, spark.y - size * 0.5f, size, size,
+				faded({ 255, 215, 122 }, peakOpacity * remaining));
 		}
 	}
 
@@ -285,6 +316,32 @@ namespace
 		bolt(batch, tail, head, direction, r + 1.f, shadow);
 		bolt(batch, tail + direction * 2.f, head - direction, direction, r, rim);
 		bolt(batch, p - direction * (length * 0.52f), head - direction, direction, r * 0.48f, core);
+	}
+
+	void gunshipShockwave(Batch& batch, const Explosion& effect)
+	{
+		const float t = std::clamp(effect.age / effect.duration, 0.f, 1.f);
+		const float remaining = 1.f - t;
+		const float radius = 14.f + 112.f * (1.f - remaining * remaining);
+		const Color gold = faded({ 255, 203, 124 }, 0.82f * remaining);
+		const Color edge = faded({ 255, 242, 205 }, 0.96f * remaining);
+		const auto front = [&](Vec direction) {
+			return std::array<sf::Vertex, 3>{
+				sf::Vertex{ effect.position + direction * (radius - 5.f - 5.f * remaining), faded(gold, 0.f) },
+				sf::Vertex{ effect.position + direction * (radius - 2.f), gold },
+				sf::Vertex{ effect.position + direction * radius, edge }
+			};
+		};
+		constexpr int segments = 48;
+		auto previous = front({ 1.f, 0.f });
+		for (int i = 1; i <= segments; ++i)
+		{
+			const float angle = tau * i / segments;
+			const auto next = front({ std::cos(angle), std::sin(angle) });
+			quad(batch, previous[0], previous[1], next[1], next[0]);
+			quad(batch, previous[1], previous[2], next[2], next[1]);
+			previous = next;
+		}
 	}
 
 	void waveBurst(Batch& batch, const Explosion& effect)
@@ -402,7 +459,7 @@ void BattleRenderer::drawBackground(sf::RenderTarget& target, const Combat& comb
 {
 	const float elapsedSeconds = combat.elapsed();
 	const float scroll = std::floor(wrap(elapsedSeconds * 24.f, sceneWidth));
-	constexpr float margin = 4.f;
+	constexpr float margin = Combat::gunshipShakeAmplitude + 1.f;
 	const float bottom = static_cast<float>(coast.getSize().y);
 	std::array<sf::Vertex, 8> landscape;
 	const auto row = [&](std::size_t first, float y, float textureY) {
@@ -454,6 +511,8 @@ void BattleRenderer::drawEffects(sf::RenderTarget& target, const Combat& combat)
 	foreground.clear();
 	for (const Explosion& effect : combat.explosions())
 	{
+		if (effect.kind == ExplosionKind::Gunship)
+			gunshipShockwave(geometry, effect);
 		if (effect.kind == ExplosionKind::Wave)
 			waveBurst(foreground, effect);
 		else
