@@ -57,21 +57,6 @@ float waveOffset(float age, float phase)
     return 31.f * triangle + 8.f * std::sin(17.f * age + phase);
 }
 
-const Enemy* guidanceTarget(const std::vector<Enemy>& enemies)
-{
-    const Enemy* best = nullptr;
-    for (const auto& enemy : enemies)
-    {
-        if (enemy.health <= 0 || enemy.position.x < 0.f || enemy.position.x > width ||
-            enemy.position.y < 0.f || enemy.position.y > height)
-            continue;
-        // Equal classes retain formation order instead of switching on every hit.
-        if (!best || stats(enemy.kind).health > stats(best->kind).health)
-            best = &enemy;
-    }
-    return best;
-}
-
 void recordTrail(Shot& shot)
 {
     auto& history = shot.trailHistory;
@@ -140,6 +125,24 @@ void Combat::setPowerInput(bool precisionHeld, bool guidanceHeld)
     guidance_.held = guidanceHeld;
 }
 
+const Enemy* Combat::guidanceTarget() const
+{
+    if (!guidanceActive())
+        return nullptr;
+
+    const Enemy* best = nullptr;
+    for (const auto& enemy : enemies_)
+    {
+        if (enemy.health <= 0 || enemy.position.x < 0.f || enemy.position.x > width ||
+            enemy.position.y < 0.f || enemy.position.y > height)
+            continue;
+        // Equal classes retain formation order instead of switching on every hit.
+        if (!best || stats(enemy.kind).health > stats(best->kind).health)
+            best = &enemy;
+    }
+    return best;
+}
+
 void Combat::PowerMeter::advance(float realDt, float useSeconds, float refillSeconds)
 {
     if (active())
@@ -151,13 +154,14 @@ void Combat::PowerMeter::advance(float realDt, float useSeconds, float refillSec
             depleted = true;
         }
     }
-    else
+    else if (charge < 1.0)
     {
         charge += static_cast<double>(realDt) / refillSeconds;
         if (charge >= 1.0 - 1e-7)
         {
             charge = 1.0;
             depleted = false;
+            ++refills;
         }
     }
 }
@@ -472,7 +476,7 @@ void Combat::fireVolley(sf::Vector2f muzzle)
 
 void Combat::updateShots(float dt)
 {
-    const auto* target = guidanceActive() ? guidanceTarget(enemies_) : nullptr;
+    const auto* target = guidanceTarget();
     for (auto& shot : shots_)
     {
         // Leave a short run out of the muzzle so the spread and wave patterns remain visible.

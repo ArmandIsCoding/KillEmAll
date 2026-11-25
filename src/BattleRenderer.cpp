@@ -201,6 +201,36 @@ namespace
 			{ left + halfHeight, tint,{ u, frameHeight } });
 	}
 
+	void guidanceReticle(Batch& batch, const Enemy& enemy)
+	{
+		const Vec center{ std::round(enemy.position.x), std::round(enemy.position.y) };
+		const float halfWidth = std::round(enemy.radius * 1.6f) + 3.f;
+		const float halfHeight = std::round(enemy.radius * 0.75f) + 3.f;
+		const Color amber{ 255, 199, 84 }, ivory{ 255, 243, 193 }, ink{ 41, 31, 37 };
+		// Open corners frame the wings. The dark edge keeps them legible in a blast.
+		for (float x : {-halfWidth, halfWidth})
+		{
+			for (float y : {-halfHeight, halfHeight})
+			{
+				const float left = center.x + x;
+				const float top = center.y + y;
+				const float armX = x < 0.f ? left : left - 7.f;
+				const float armY = y < 0.f ? top : top - 5.f;
+				rectangle(batch, armX - 1.f, top - 1.f, 11.f, 4.f, ink);
+				rectangle(batch, left - 1.f, armY - 1.f, 4.f, 9.f, ink);
+				rectangle(batch, armX, top, 9.f, 2.f, amber);
+				rectangle(batch, left, armY, 2.f, 7.f, amber);
+				rectangle(batch, left, top, 2.f, 2.f, ivory);
+			}
+		}
+		for (float y : {-halfHeight, halfHeight})
+		{
+			const float top = center.y + y - 2.f;
+			rectangle(batch, center.x - 2.f, top - 1.f, 5.f, 7.f, ink);
+			rectangle(batch, center.x - 1.f, top, 3.f, 5.f, ivory);
+		}
+	}
+
 	void fireRateBadge(Batch& batch, const FireRatePickup& pickup)
 	{
 		const Vec p{ std::round(pickup.position.x), std::round(pickup.position.y) };
@@ -520,6 +550,8 @@ void BattleRenderer::drawEffects(sf::RenderTarget& target, const Combat& combat)
 			projectile(foreground, shot);
 	if (const auto& pickup = combat.fireRatePickup())
 		fireRateBadge(foreground, *pickup);
+	if (const auto* enemy = combat.guidanceTarget())
+		guidanceReticle(foreground, *enemy);
 	for (const Shot& shot : combat.shots())
 		if (shot.kind == ShotKind::Enemy || shot.kind == ShotKind::EnemyOrb)
 			projectile(foreground, shot);

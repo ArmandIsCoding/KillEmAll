@@ -4,7 +4,7 @@ Un *bullet hell* de desplazamiento horizontal hecho en **C++17 y SFML 3.1**. Ten
 
 [Compilar y jugar en Windows](#compilar-en-visual-studio) · [Controles](#controles)
 
-![El avión activa la cámara lenta y el guiado. Los proyectiles giran hacia los blindados, aparece ¡IMPARABLE! y la cadena alcanza COMBO x7 +2100.](docs/media/combate.gif)
+![La mira ámbar enmarca a un blindado. Al caer, la mira y los disparos pasan al siguiente enemigo mientras la cadena alcanza COMBO x5 +1000.](docs/media/combate.gif)
 
 ## Los primeros 45 segundos
 
@@ -36,9 +36,11 @@ Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno 
 
 Podés usar **precisión y guiado juntos**. La cámara lenta alcanza el vuelo, el desplazamiento de la costa, los enemigos, las balas de ambos bandos, la cadencia del cañón y las explosiones. También baja el ritmo de la música, los sonidos de combate y las fanfarrias.
 
-Con el **guiado**, los tiros nuevos salen del cañón con su trayectoria habitual y enseguida doblan. Los que ya están en vuelo también buscan el blanco. Todos apuntan al mismo enemigo, con prioridad para el blindado, luego el interceptor y por último el explorador. Si cae el blanco, los proyectiles que siguen en vuelo giran hacia el siguiente. Al soltar la barra, los tiros retoman su trayectoria habitual desde el rumbo que llevaban, incluido el zigzag de los verdes.
+Con el **guiado**, los tiros nuevos salen del cañón con su trayectoria habitual y enseguida doblan. Los que ya están en vuelo también buscan el blanco. Una **mira ámbar** marca al enemigo que persiguen todos los tiros, con prioridad para el blindado, luego el interceptor y por último el explorador. Si lo derribás, la mira salta al siguiente blanco y los proyectiles giran hacia él. Al soltar la barra, la mira desaparece y los tiros retoman su trayectoria habitual desde el rumbo que llevaban, incluido el zigzag de los verdes.
 
 Las dos barras de la cabecera arrancan llenas. La de **precisión** da **4 segundos** de uso continuo y tarda **8 segundos** en llenarse desde cero. La de **guiado** da **5 segundos** y tarda **10 segundos** en llenarse. Soltá la tecla y el poder recupera carga. Si lo agotás, la barra marca **RECARGA** hasta llenarse por completo. Si seguís manteniendo la tecla, el poder vuelve a activarse al llenarse. Estos tiempos se miden en segundos reales de juego, incluso en cámara lenta. En pausa las barras se congelan.
+
+Al volver al **100 %**, precisión avisa con **dos campanadas ascendentes** y guiado con **tres pulsos agudos**. Cada aviso suena una vez, incluso si solo gastaste parte de la carga.
 
 ## Tráfico sobre el puerto
 

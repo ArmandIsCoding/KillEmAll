@@ -105,8 +105,11 @@ public:
     float guidanceCharge() const { return static_cast<float>(guidance_.charge); }
     bool precisionActive() const { return !gameOver() && precision_.active(); }
     bool guidanceActive() const { return !gameOver() && guidance_.active(); }
+    const Enemy* guidanceTarget() const;
     bool precisionRecharging() const { return precision_.depleted; }
     bool guidanceRecharging() const { return guidance_.depleted; }
+    unsigned precisionRefills() const { return precision_.refills; }
+    unsigned guidanceRefills() const { return guidance_.refills; }
     float timeScale() const { return precisionActive() ? 0.45f : 1.f; }
     void update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffset = {49.f, 0.f});
     void reset();
@@ -135,6 +138,7 @@ private:
     struct PowerMeter
     {
         double charge = 1.0;
+        unsigned refills = 0;
         bool held = false;
         bool depleted = false;
 

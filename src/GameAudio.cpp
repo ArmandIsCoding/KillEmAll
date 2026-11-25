@@ -8,8 +8,10 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
       blastData(folder / "blast.wav"), gunshipBlastData(folder / "gunship-blast.wav"), impactData(folder / "impact.wav"),
       powerData(folder / "power.wav"), comboData(folder / "combo-note.wav"),
       fanfareFiveData(folder / "combo-five.wav"), fanfareTenData(folder / "combo-ten.wav"),
+      precisionReadyData(folder / "precision-ready.wav"), guidanceReadyData(folder / "guidance-ready.wav"),
       music(musicData), cannon(cannonData), blast(blastData), wave(blastData),
-      impact(impactData), upgrade(powerData), comboNote(comboData), fanfare(fanfareFiveData)
+      impact(impactData), upgrade(powerData), comboNote(comboData), fanfare(fanfareFiveData),
+      precisionReady(precisionReadyData), guidanceReady(guidanceReadyData)
 {
     music.setLooping(true);
     music.setVolume(24.f);
@@ -21,6 +23,8 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
     upgrade.setVolume(42.f);
     comboNote.setVolume(50.f);
     fanfare.setVolume(55.f);
+    precisionReady.setVolume(46.f);
+    guidanceReady.setVolume(46.f);
 }
 
 void GameAudio::restart()
@@ -31,6 +35,8 @@ void GameAudio::restart()
     lastVolley = 0;
     lastExplosion = 0;
     lastMilestone = 0;
+    lastPrecisionRefill = 0;
+    lastGuidanceRefill = 0;
     lastLives = 3;
     setPlaying(true);
 }
@@ -58,6 +64,8 @@ void GameAudio::stopBattleSounds()
     wave.stop();
     impact.stop();
     upgrade.stop();
+    precisionReady.stop();
+    guidanceReady.stop();
 }
 
 void GameAudio::toggleMute()
@@ -79,6 +87,8 @@ void GameAudio::setTimeScale(float scale)
     upgrade.setPitch(scale);
     comboNote.setPitch(comboPitch_ * scale);
     fanfare.setPitch(scale);
+    precisionReady.setPitch(scale);
+    guidanceReady.setPitch(scale);
     for (auto& voice : gunshipBlasts)
         voice.setPitch(scale);
 }
@@ -127,6 +137,10 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
             impact.play();
         if (running && weaponUpgraded)
             upgrade.play();
+        if (running && combat.precisionRefills() > lastPrecisionRefill)
+            precisionReady.play();
+        if (running && combat.guidanceRefills() > lastGuidanceRefill)
+            guidanceReady.play();
     }
     // Separate the attacks so even kills in one frame form an audible run of notes.
     if (!pendingComboNotes.empty() && comboNote.getStatus() == sf::Sound::Status::Stopped)
@@ -144,6 +158,8 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
         fanfare.play();
     }
     lastMilestone = milestone;
+    lastPrecisionRefill = combat.precisionRefills();
+    lastGuidanceRefill = combat.guidanceRefills();
     lastVolley = combat.volleysFired();
     if (!combat.explosions().empty())
         lastExplosion = combat.explosions().back().seed;

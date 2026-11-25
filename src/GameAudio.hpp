@@ -25,7 +25,9 @@ private:
 
     sf::SoundBuffer musicData, cannonData, blastData, gunshipBlastData, impactData, powerData, comboData;
     sf::SoundBuffer fanfareFiveData, fanfareTenData;
+    sf::SoundBuffer precisionReadyData, guidanceReadyData;
     sf::Sound music, cannon, blast, wave, impact, upgrade, comboNote, fanfare;
+    sf::Sound precisionReady, guidanceReady;
     std::deque<sf::Sound> gunshipBlasts;
     std::deque<int> pendingComboNotes;
     float timeScale_ = 1.f;
@@ -33,6 +35,8 @@ private:
     unsigned int lastVolley = 0;
     unsigned int lastExplosion = 0;
     unsigned lastMilestone = 0;
+    unsigned lastPrecisionRefill = 0;
+    unsigned lastGuidanceRefill = 0;
     int lastLives = 3;
     bool running = false;
     bool silent = false;
