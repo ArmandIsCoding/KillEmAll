@@ -115,6 +115,16 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
 
     label(target, font, "PUNTOS", 26, 9, 9, dim);
     label(target, font, scoreNumber(combat.score()), 26, 25, 23, gold);
+    const auto combo = combat.combo();
+    if (combo.kills >= 2 && !paused)
+    {
+        const auto notice = "COMBO x" + std::to_string(combo.kills) + " +" + std::to_string(combo.bonus);
+        const auto size = std::min(10u, 134u / static_cast<unsigned>(notice.size()));
+        rect(target, 86, 5, 143, 16, steel);
+        rect(target, 86, 5, 2, 16, cyan);
+        label(target, font, notice, 92, 8, size, cyan);
+    }
+
     label(target, font, "VIDAS", 260, 9, 9, dim);
     sf::Sprite plane(lifeTexture);
     plane.setOrigin(sf::Vector2f(lifeTexture.getSize()) * 0.5f);

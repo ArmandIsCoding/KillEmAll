@@ -4,6 +4,7 @@
 
 #include <optional>
 #include <random>
+#include <unordered_map>
 #include <vector>
 
 enum class EnemyKind { Scout, Striker, Gunship };
@@ -64,8 +65,15 @@ struct Explosion
     ExplosionKind kind;
     unsigned seed;
     float sweptRadius = 0.f;
+    unsigned chainId = 0;
 
     float shockwaveRadius() const;
+};
+
+struct Combo
+{
+    int kills = 0;
+    int bonus = 0;
 };
 
 class Combat
@@ -88,6 +96,7 @@ public:
     const std::optional<FireRatePickup>& fireRatePickup() const { return fireRatePickup_; }
     unsigned pickupsCollected() const { return pickupsCollected_; }
     int score() const { return score_; }
+    Combo combo() const { return !gameOver() && elapsed_ < comboUntil_ ? lastCombo_ : Combo{}; }
     int lives() const { return lives_; }
     int power() const;
     unsigned int volleysFired() const { return volleysFired_; }
@@ -97,6 +106,12 @@ public:
     bool invulnerable() const { return grace_ > 0.f; }
 
 private:
+    struct Chain
+    {
+        Combo tally{1, 0}; // The gunship whose explosion started the chain.
+        unsigned liveWaves = 0;
+    };
+
     void step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffset);
     void spawnFormation();
     void updateEnemies(float dt, sf::Vector2f playerPosition);
@@ -109,15 +124,18 @@ private:
     void collide(sf::Vector2f playerPosition);
     void sweepGunshipShockwaves();
     void hitEnemies(Shot& shot);
-    void damage(Enemy& enemy, int amount);
+    void damage(Enemy& enemy, int amount, unsigned chainId = 0);
     void hitPlayer(sf::Vector2f position);
-    void explodeEnemy(const Enemy& enemy);
-    void explode(sf::Vector2f position, ExplosionKind kind);
+    void explodeEnemy(const Enemy& enemy, unsigned chainId = 0);
+    void explode(sf::Vector2f position, ExplosionKind kind, unsigned chainId = 0);
 
     std::vector<Enemy> enemies_;
     std::vector<Shot> shots_;
     std::vector<FadingTrail> fadingTrails_;
     std::vector<Explosion> explosions_;
+    std::unordered_map<unsigned, Chain> chains_;
+    Combo lastCombo_;
+    float comboUntil_ = 0.f;
     std::optional<FireRatePickup> fireRatePickup_;
     std::minstd_rand pickupRandom_{std::random_device{}()};
     std::minstd_rand weaponRandom_{std::random_device{}()};

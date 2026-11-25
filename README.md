@@ -4,7 +4,7 @@ Un *bullet hell* de desplazamiento horizontal hecho en **C++17 y SFML 3.1**. Ten
 
 [Compilar y jugar en Windows](#compilar-en-visual-studio) · [Controles](#controles)
 
-![Dos blindados explotan en cadena sobre el puerto. Sus anillos ámbar se expanden y barren las balas fucsias a su paso.](docs/media/combate.gif)
+![Cuatro naves explotan en cadena sobre el puerto. Junto al puntaje, el contador sube hasta COMBO x4 y muestra 600 puntos extra.](docs/media/combate.gif)
 
 ## Los primeros 45 segundos
 
@@ -40,6 +40,8 @@ Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno 
 El **explorador** apunta a tu posición. El **interceptor** dispara en abanicos de tres. El **blindado** llega escoltado y alterna el ángulo de sus abanicos de siete proyectiles. El hueco por el que pasaste la primera vez cambia de lugar en la siguiente descarga.
 
 Cuando cae un blindado, un relámpago ilumina la costa y la cámara se sacude al ritmo de la explosión grave. La **onda expansiva ámbar** barre las balas y los orbes enemigos justo cuando el anillo los alcanza. Cerca del casco, el golpe puede destruir otro blindado intacto. En la periferia hace menos daño y puede rematar una nave averiada. Después de los 30 segundos, algunos convoyes traen dos blindados juntos. Derribá uno para encadenar la segunda explosión y sumar los puntos de ambas bajas.
+
+El blindado que inicia la cadena cuenta como primera baja. Si su onda derriba otra nave, aparece **COMBO x2 +100** junto al puntaje. La tercera baja de la misma cadena agrega 200 puntos extra y la cuarta agrega 300. En **COMBO x4 +600**, esos 600 ya están incluidos en tu puntaje, además del valor de cada enemigo. Las bajas por las ondas de los blindados que explotan en cadena también cuentan para ese combo.
 
 ## Compilar en Visual Studio
 

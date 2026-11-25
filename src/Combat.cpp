@@ -108,8 +108,17 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
 
         if (!gameOver())
             step(slice, playerPosition, muzzleOffset);
-        explosions_.erase(std::remove_if(explosions_.begin(), explosions_.end(),
-            [](const Explosion& effect) { return effect.age >= effect.duration; }), explosions_.end());
+        explosions_.erase(std::remove_if(explosions_.begin(), explosions_.end(), [this](const Explosion& effect) {
+            if (effect.age < effect.duration)
+                return false;
+            if (effect.chainId != 0)
+            {
+                auto chain = chains_.find(effect.chainId);
+                if (--chain->second.liveWaves == 0)
+                    chains_.erase(chain);
+            }
+            return true;
+        }), explosions_.end());
         if (gameOver() && explosions_.empty() && fadingTrails_.empty())
             break;
 
@@ -353,15 +362,21 @@ void Combat::updateShots(float dt)
     }
 }
 
-void Combat::explode(sf::Vector2f position, ExplosionKind kind)
+void Combat::explode(sf::Vector2f position, ExplosionKind kind, unsigned chainId)
 {
     const float duration = kind == ExplosionKind::Wave ? 0.27f : kind == ExplosionKind::Player ? 0.75f : 0.45f;
     explosions_.push_back({position, 0.f, duration, kind, ++explosionSerial_});
+    if (kind == ExplosionKind::Gunship)
+    {
+        auto& wave = explosions_.back();
+        wave.chainId = chainId == 0 ? wave.seed : chainId;
+        ++chains_[wave.chainId].liveWaves;
+    }
 }
 
-void Combat::explodeEnemy(const Enemy& enemy)
+void Combat::explodeEnemy(const Enemy& enemy, unsigned chainId)
 {
-    explode(enemy.position, enemy.kind == EnemyKind::Gunship ? ExplosionKind::Gunship : ExplosionKind::Enemy);
+    explode(enemy.position, enemy.kind == EnemyKind::Gunship ? ExplosionKind::Gunship : ExplosionKind::Enemy, chainId);
 }
 
 void Combat::hitPlayer(sf::Vector2f position)
@@ -373,14 +388,24 @@ void Combat::hitPlayer(sf::Vector2f position)
     explode(position, ExplosionKind::Player);
 }
 
-void Combat::damage(Enemy& enemy, int amount)
+void Combat::damage(Enemy& enemy, int amount, unsigned chainId)
 {
     enemy.hitFlash = 0.09f;
     enemy.health = std::max(0, enemy.health - amount);
     if (enemy.health == 0)
     {
         score_ += stats(enemy.kind).points;
-        explodeEnemy(enemy);
+        if (chainId != 0)
+        {
+            auto& tally = chains_.at(chainId).tally;
+            const int extra = 100 * tally.kills;
+            ++tally.kills;
+            tally.bonus += extra;
+            score_ += extra;
+            lastCombo_ = tally;
+            comboUntil_ = elapsed_ + 2.f;
+        }
+        explodeEnemy(enemy, chainId);
     }
 }
 
@@ -443,7 +468,7 @@ void Combat::sweepGunshipShockwaves()
             if (std::find(hits.begin(), hits.end(), wave.seed) != hits.end())
                 continue;
             const bool inCore = overlaps(wave.position, coreRadius, enemy.position, enemy.radius);
-            damage(enemy, inCore ? stats(EnemyKind::Gunship).health : 3);
+            damage(enemy, inCore ? stats(EnemyKind::Gunship).health : 3, wave.chainId);
             if (enemy.health > 0)
                 hits.push_back(wave.seed);
         }
