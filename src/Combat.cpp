@@ -9,6 +9,7 @@ namespace
 constexpr float width = 960.f;
 constexpr float height = 540.f;
 constexpr float pi = 3.14159265f;
+constexpr float milestoneDuration = 1.4f;
 
 struct EnemyStats
 {
@@ -55,6 +56,71 @@ float waveOffset(float age, float phase)
     const float triangle = 1.f - 4.f * std::abs(cycle - std::floor(cycle) - 0.5f);
     return 31.f * triangle + 8.f * std::sin(17.f * age + phase);
 }
+
+const Enemy* guidanceTarget(const std::vector<Enemy>& enemies)
+{
+    const Enemy* best = nullptr;
+    for (const auto& enemy : enemies)
+    {
+        if (enemy.health <= 0 || enemy.position.x < 0.f || enemy.position.x > width ||
+            enemy.position.y < 0.f || enemy.position.y > height)
+            continue;
+        // Equal classes retain formation order instead of switching on every hit.
+        if (!best || stats(enemy.kind).health > stats(best->kind).health)
+            best = &enemy;
+    }
+    return best;
+}
+
+void recordTrail(Shot& shot)
+{
+    auto& history = shot.trailHistory;
+    if (!history.empty() && shot.age - history.back().age < 1.f / 30.f)
+        return;
+    if (history.size() > 1 && history[1].age < shot.age - Combat::trailLifetime)
+        history.erase(history.begin());
+    history.push_back({shot.age, shot.position, shot.velocity});
+}
+
+void steerShot(Shot& shot, const Enemy& target, float dt)
+{
+    const auto offset = target.position - shot.position;
+    const float speed = shot.velocity.length();
+    const float angle = std::atan2(shot.velocity.cross(offset), shot.velocity.dot(offset));
+    // Tighten the turning circle at close range so a shot can catch a target it overshot.
+    const float turn = dt * std::max(10.f, 1.6f * speed / std::max(28.f, offset.length()));
+    const float change = std::clamp(angle, -turn, turn);
+    if (shot.kind == ShotKind::Player && (shot.hasTrail() || std::abs(angle) > 0.0001f))
+        recordTrail(shot);
+    const float heading = std::atan2(shot.velocity.y, shot.velocity.x) + change;
+    const float cruiseSpeed = shot.kind == ShotKind::PlayerWave ? 545.f : 630.f;
+    shot.velocity = velocityAt(heading, speed + (cruiseSpeed - speed) * (6.f * dt));
+    if (shot.kind == ShotKind::PlayerWave)
+    {
+        shot.lastGuidedAge = shot.age + dt;
+        shot.waveDriftX = shot.velocity.x;
+        shot.waveDriftY = shot.velocity.y;
+    }
+}
+}
+
+Shot::TrailSample Shot::trailSample(float lookback) const
+{
+    const float when = age - lookback;
+    const auto after = std::lower_bound(trailHistory.begin(), trailHistory.end(), when,
+        [](const TrailSample& sample, float time) { return sample.age < time; });
+    const auto next = after == trailHistory.end() ? TrailSample{age, position, velocity} : *after;
+    if (after == trailHistory.begin())
+    {
+        // Before the first guided turn the path is exactly the original parabola.
+        const float dt = next.age - when;
+        const sf::Vector2f pastVelocity = next.velocity - sf::Vector2f{0.f, verticalAcceleration * dt};
+        return {when, next.position - (next.velocity + pastVelocity) * (0.5f * dt), pastVelocity};
+    }
+    const auto& prev = *(after - 1);
+    const float t = (when - prev.age) / (next.age - prev.age);
+    return {when, prev.position + (next.position - prev.position) * t,
+            prev.velocity + (next.velocity - prev.velocity) * t};
 }
 
 float Explosion::shockwaveRadius() const
@@ -66,6 +132,34 @@ float Explosion::shockwaveRadius() const
 void Combat::reset()
 {
     *this = Combat{};
+}
+
+void Combat::setPowerInput(bool precisionHeld, bool guidanceHeld)
+{
+    precision_.held = precisionHeld;
+    guidance_.held = guidanceHeld;
+}
+
+void Combat::PowerMeter::advance(float realDt, float useSeconds, float refillSeconds)
+{
+    if (active())
+    {
+        charge -= static_cast<double>(realDt) / useSeconds;
+        if (charge <= 1e-7)
+        {
+            charge = 0.0;
+            depleted = true;
+        }
+    }
+    else
+    {
+        charge += static_cast<double>(realDt) / refillSeconds;
+        if (charge >= 1.0 - 1e-7)
+        {
+            charge = 1.0;
+            depleted = false;
+        }
+    }
 }
 
 int Combat::power() const
@@ -95,10 +189,12 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
     if (!std::isfinite(dt) || dt <= 0.f)
         return;
 
+    const bool hadMilestone = !milestones_.empty();
     // Substeps keep small targets hittable even if a frame takes longer.
     while (dt > 0.f)
     {
-        const float slice = std::min(dt, 1.f / 120.f);
+        const float realSlice = std::min(dt, maxStep);
+        const float slice = realSlice * timeScale();
         for (auto& explosion : explosions_)
             explosion.age += slice;
         for (auto& trail : fadingTrails_)
@@ -107,7 +203,11 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
             [](const FadingTrail& trail) { return trail.age >= trailLifetime; }), fadingTrails_.end());
 
         if (!gameOver())
+        {
             step(slice, playerPosition, muzzleOffset);
+            precision_.advance(realSlice, 4.f, 8.f);
+            guidance_.advance(realSlice, 5.f, 10.f);
+        }
         explosions_.erase(std::remove_if(explosions_.begin(), explosions_.end(), [this](const Explosion& effect) {
             if (effect.age < effect.duration)
                 return false;
@@ -122,7 +222,19 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
         if (gameOver() && explosions_.empty() && fadingTrails_.empty())
             break;
 
-        dt -= slice;
+        dt -= realSlice;
+    }
+    // Start the display timer at frame end so each notice stays readable after a long update.
+    if (gameOver())
+        milestones_.clear();
+    else if (!milestones_.empty() && (!hadMilestone || elapsed_ >= milestoneUntil_))
+    {
+        if (hadMilestone)
+        {
+            milestones_.pop_front();
+            ++finishedMilestones_;
+        }
+        milestoneUntil_ = elapsed_ + milestoneDuration;
     }
 }
 
@@ -182,7 +294,25 @@ void Combat::spawnFormation()
             add(EnemyKind::Gunship, 0.f, 0.f, 0.f);
             add(EnemyKind::Scout, 85.f, -82.f, 0.f);
             if (elapsed_ >= 30.f && (formation_ / 4) % 2 == 1)
+            {
                 add(EnemyKind::Gunship, 70.f, 64.f, 0.f);
+                if (power() == 5 && formation_ % 16 == 7)
+                {
+                    // Two compact escort rows fly at convoy speed and leave the lower lane open.
+                    for (int column = 0; column < 4; ++column)
+                    {
+                        for (int row = 0; row < 2; ++row)
+                        {
+                            const float x = 42.f + 34.f * column + 12.f * row;
+                            const float y = row == 0 ? -46.f + 16.f * (column % 2) : 108.f - 16.f * (column % 2);
+                            add(EnemyKind::Scout, x, y, 0.6f * column + row * pi);
+                            auto& escort = enemies_.back();
+                            escort.velocity.x = -stats(EnemyKind::Gunship).speed;
+                            escort.fireTimer = 3.2f + 0.45f * (column * 2 + row);
+                        }
+                    }
+                }
+            }
             else
                 add(EnemyKind::Scout, 85.f, 82.f, pi);
             break;
@@ -319,12 +449,11 @@ void Combat::fireVolley(sf::Vector2f muzzle)
     {
         const float angle = i * (level >= 5 ? 0.18f : 0.12f) + jitter(weaponRandom_);
         Shot shot{ShotKind::Player, muzzle, velocityAt(angle, 630.f), 3.f, 0.f, 0.f};
+        shot.trailPower = intensity;
+        shot.sparkSeed = static_cast<unsigned>(std::abs(shot.velocity.x) * 1024.f);
         const float roll = curveRoll(weaponRandom_);
         if (std::abs(roll) < curveChance)
-        {
             shot.verticalAcceleration = std::copysign(curveAcceleration, roll);
-            shot.trailPower = intensity;
-        }
         shots_.push_back(shot);
     }
 
@@ -343,17 +472,33 @@ void Combat::fireVolley(sf::Vector2f muzzle)
 
 void Combat::updateShots(float dt)
 {
+    const auto* target = guidanceActive() ? guidanceTarget(enemies_) : nullptr;
     for (auto& shot : shots_)
     {
+        // Leave a short run out of the muzzle so the spread and wave patterns remain visible.
+        const bool steering = target && friendly(shot.kind) && shot.age >= 0.05f;
+        if (steering)
+            steerShot(shot, *target, dt);
+        else if (!shot.trailHistory.empty())
+            recordTrail(shot);
         shot.age += dt;
-        if (shot.kind == ShotKind::PlayerWave)
+        if (!steering && shot.kind == ShotKind::PlayerWave)
         {
             const float before = waveOffset(shot.age - dt, shot.wavePhase);
             const float after = waveOffset(shot.age, shot.wavePhase);
-            shot.velocity.y = shot.waveDriftY + shot.waveSign * (after - before) / dt;
+            const float swing = shot.waveSign * (after - before) / dt;
+            if (shot.lastGuidedAge < 0.f)
+                shot.velocity.y = shot.waveDriftY + swing;
+            else
+            {
+                // Reintroduce the zigzag around the course held when guidance ended.
+                const sf::Vector2f drift{shot.waveDriftX, shot.waveDriftY};
+                const float blend = std::min(1.f, (shot.age - shot.lastGuidedAge) / 0.14f);
+                shot.velocity = drift + drift.perpendicular().normalized() * (swing * blend);
+            }
         }
         shot.position += shot.velocity * dt;
-        if (shot.verticalAcceleration != 0.f)
+        if (!steering && shot.verticalAcceleration != 0.f)
         {
             const float changeInSpeedY = shot.verticalAcceleration * dt;
             shot.position.y += 0.5f * changeInSpeedY * dt;
@@ -408,6 +553,9 @@ void Combat::damage(Enemy& enemy, int amount, unsigned chainId)
             score_ += extra;
             lastCombo_ = tally;
             comboUntil_ = elapsed_ + 2.f;
+            bestCombo_ = std::max(bestCombo_, tally.kills);
+            if (tally.kills == 5 || tally.kills == 10)
+                milestones_.push_back(tally.kills);
         }
         explodeEnemy(enemy, chainId);
     }

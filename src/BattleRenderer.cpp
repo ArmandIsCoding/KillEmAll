@@ -229,25 +229,21 @@ namespace
 
 	void curvedTrail(Batch& batch, const Shot& shot, float fadingAge)
 	{
-		const float history = std::min(shot.age, Combat::trailLifetime - fadingAge);
+		const float trailAge = shot.verticalAcceleration != 0.f ? shot.age : shot.age - shot.trailHistory.front().age;
+		const float history = std::min(trailAge, Combat::trailLifetime - fadingAge);
 		if (history <= 0.f)
 			return;
 
-		const Vec acceleration{ 0.f, shot.verticalAcceleration };
 		const Color tint{ 255, static_cast<std::uint8_t>(173.f + 70.f * shot.trailPower),
 			static_cast<std::uint8_t>(69.f + 124.f * shot.trailPower) };
 		const float peakOpacity = 0.57f + 0.43f * shot.trailPower;
 		const float halfWidth = 1.4f + 0.75f * shot.trailPower;
-		const auto positionAt = [&](float lookback) {
-			return shot.position - (shot.velocity - acceleration * (0.5f * lookback)) * lookback;
-		};
 		const auto crossSection = [&](float lookback) {
-			const Vec pastVelocity = shot.velocity - acceleration * lookback;
-			const Vec center = positionAt(lookback);
+			const auto sample = shot.trailSample(lookback);
 			const float strength = 1.f - (lookback + fadingAge) / Combat::trailLifetime;
-			const Vec side = pastVelocity.perpendicular().normalized() * (halfWidth * strength);
+			const Vec side = sample.velocity.perpendicular().normalized() * (halfWidth * strength);
 			const Color amber = faded(tint, peakOpacity * strength * strength);
-			return std::array<sf::Vertex, 2>{ sf::Vertex{ center - side, amber }, sf::Vertex{ center + side, amber } };
+			return std::array<sf::Vertex, 2>{ sf::Vertex{ sample.position - side, amber }, sf::Vertex{ sample.position + side, amber } };
 		};
 
 		constexpr int segments = 7;
@@ -262,25 +258,25 @@ namespace
 		if (shot.trailPower < 0.55f)
 			return;
 
-		// Horizontal speed stays constant. Use it to stagger emission times across a volley.
 		constexpr float spacing = 0.10f;
 		constexpr float lifetime = 0.24f;
-		unsigned seed = static_cast<unsigned>(std::abs(shot.velocity.x) * 1024.f);
+		unsigned seed = shot.sparkSeed;
 		const float firstSpark = spacing * (0.25f + 0.75f * sample(seed));
 		const int latest = static_cast<int>(std::floor((shot.age - firstSpark) / spacing));
 		for (int i = latest; i >= 0; --i)
 		{
 			const float lookback = shot.age - (firstSpark + i * spacing);
 			const float age = lookback + fadingAge;
-			if (age >= lifetime)
+			if (age >= lifetime || lookback > history)
 				break;
 
 			unsigned noise = seed + static_cast<unsigned>(i) * 2654435761u;
 			const float side = (noise & 1u) ? 1.f : -1.f;
 			const float outwardSpeed = side * (48.f + 42.f * sample(noise));
-			const Vec direction = (shot.velocity - acceleration * lookback).normalized();
+			const auto emission = shot.trailSample(lookback);
+			const Vec direction = emission.velocity.normalized();
 			const Vec drift = direction * 16.f + direction.perpendicular() * outwardSpeed;
-			const Vec spark = positionAt(lookback) + drift * age;
+			const Vec spark = emission.position + drift * age;
 			const float remaining = 1.f - age / lifetime;
 			const float size = 1.f + (1.4f + shot.trailPower) * remaining;
 			rectangle(batch, spark.x - size * 0.5f, spark.y - size * 0.5f, size, size,

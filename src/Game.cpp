@@ -108,21 +108,30 @@ bool Game::precisionFlight() const
 
 void Game::update(float dt)
 {
+    combat.setPowerInput(precisionFlight(), pressed.count(Key::Space) != 0);
     if (paused)
         return;
-    const bool wasOver = combat.gameOver();
     const int oldPower = combat.power();
     const auto oldPickups = combat.pickupsCollected();
     const auto oldVolley = combat.volleysFired();
-    if (!wasOver)
-        player.update(flightDirection(), sf::seconds(dt), fieldSize, precisionFlight());
-    combat.update(dt, player.getPosition(), player.muzzleOffset());
+    const auto direction = flightDirection();
+    float worldDt = 0.f;
+    while (dt > 0.f)
+    {
+        const float realSlice = std::min(dt, Combat::maxStep);
+        const float worldSlice = realSlice * combat.timeScale();
+        if (!combat.gameOver())
+            player.update(direction, sf::seconds(worldSlice), fieldSize);
+        combat.update(realSlice, player.getPosition(), player.muzzleOffset());
+        worldDt += worldSlice;
+        dt -= realSlice;
+    }
     bestScore = std::max(bestScore, combat.score());
     const bool leveledUp = combat.power() > oldPower;
     const bool pickedUp = combat.pickupsCollected() > oldPickups;
-    powerNotice = leveledUp ? 1.6f : std::max(0.f, powerNotice - dt);
-    pickupNotice = pickedUp ? 1.6f : std::max(0.f, pickupNotice - dt);
-    muzzleFlash = combat.volleysFired() != oldVolley ? 0.055f : std::max(0.f, muzzleFlash - dt);
+    powerNotice = leveledUp ? 1.6f : std::max(0.f, powerNotice - worldDt);
+    pickupNotice = pickedUp ? 1.6f : std::max(0.f, pickupNotice - worldDt);
+    muzzleFlash = combat.volleysFired() != oldVolley ? 0.055f : std::max(0.f, muzzleFlash - worldDt);
     if (audio)
         audio->update(combat, leveledUp || pickedUp);
 }
@@ -145,7 +154,7 @@ void Game::drawPlayer()
         window.draw(flash, 3, sf::PrimitiveType::Triangles);
     }
 
-    if (precisionFlight() || combat.invulnerable())
+    if (combat.precisionActive() || combat.invulnerable())
     {
         const bool shield = combat.invulnerable();
         const float radius = shield ? 18.f + 3.f * std::sin(16.f * combat.elapsed()) : Combat::playerHitRadius;
@@ -156,7 +165,7 @@ void Game::drawPlayer()
         ring.setOutlineColor(shield ? sf::Color{108, 242, 254, 200} : sf::Color{255, 252, 213});
         ring.setOutlineThickness(1.5f);
         window.draw(ring);
-        if (precisionFlight())
+        if (combat.precisionActive())
         {
             sf::RectangleShape core({4.f, 4.f});
             core.setPosition(position - sf::Vector2f{2.f, 2.f});

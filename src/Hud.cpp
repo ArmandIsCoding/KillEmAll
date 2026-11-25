@@ -71,6 +71,42 @@ void comboNotice(sf::RenderTarget& target, const sf::Font& font, Combo combo)
     label(target, font, bonus, divider + 8.f, top + std::round((height - bonusSize) * 0.5f) + 1.f, bonusSize, ivory);
 }
 
+void milestoneNotice(sf::RenderTarget& target, const sf::Font& font, int milestone)
+{
+    const sf::String title = milestone == 10 ? U"\u00a1LEGENDARIO!" : U"\u00a1IMPARABLE!";
+    const auto count = "x" + std::to_string(milestone);
+    const sf::Color accent = milestone == 10 ? ivory : sf::Color{255, 140, 102};
+    const float tagWidth = 10.f + static_cast<float>(count.size() * 12);
+    const float tagX = 938.f - tagWidth;
+    const float left = tagX - 20.f - static_cast<float>(title.getSize() * 15);
+    rect(target, left, 60, 938.f - left, 29, {39, 29, 41, 242});
+    rect(target, left, 60, 3, 29, accent);
+    label(target, font, title, left + 10.f, 68, 15, accent);
+    rect(target, tagX, 65, tagWidth - 3.f, 19, accent);
+    label(target, font, count, tagX + 3.f, 69, 12, ink);
+}
+
+void abilityMeter(sf::RenderTarget& target, const sf::Font& font, const sf::String& key,
+                  const sf::String& name, float y, float charge, bool active, bool recharging, sf::Color accent)
+{
+    rect(target, 440, y, 68, 18, active ? accent : seam);
+    rect(target, 441, y + 1, 66, 16, active ? accent : steel);
+    const float keyWidth = static_cast<float>(key.getSize() * 8);
+    label(target, font, key, 474.f - keyWidth * 0.5f, y + 5, 8, active ? ink : ivory);
+    label(target, font, name, 516, y + 5, 9, active ? accent : dim);
+
+    constexpr float width = 76.f;
+    rect(target, 604, y + 3, width + 4, 12, active ? ivory : seam);
+    rect(target, 606, y + 5, width, 8, ink);
+    const float fill = std::round(width * std::clamp(charge, 0.f, 1.f));
+    if (fill > 0.f)
+        rect(target, 606, y + 5, fill, 8, recharging ? seam : accent);
+    for (float tick : {19.f, 38.f, 57.f})
+        rect(target, 606 + tick, y + 5, 1, 8, ink);
+    if (recharging)
+        label(target, font, "RECARGA", 616, y + 5, 8, ivory);
+}
+
 void keycap(sf::RenderTarget& target, const sf::Font& font, const sf::String& name,
             float x, float y, float width)
 {
@@ -90,22 +126,24 @@ void panel(sf::RenderTarget& target, float x, float y, float w, float h, sf::Col
 
 void pausePanel(sf::RenderTarget& target, const sf::Font& font, bool muted)
 {
-    panel(target, 234, 164, 492, 317, cyan);
-    label(target, font, "PAUSA", 266, 192, 32, ivory);
-    rect(target, 266, 248, 427, 2, seam);
+    panel(target, 211, 145, 538, 357, cyan);
+    label(target, font, "PAUSA", 243, 173, 32, ivory);
+    rect(target, 243, 229, 474, 2, seam);
 
     const auto row = [&](float y, const sf::String& key, const sf::String& action) {
-        keycap(target, font, key, 266, y, 158);
+        keycap(target, font, key, 243, y, 178);
         label(target, font, action, 439, y + 5, 12, ivory);
     };
-    row(265, "WASD / FLECHAS", "MOVERSE");
-    row(303, "SHIFT", U"VUELO DE PRECISI\u00d3N");
-    row(341, "M", muted ? "ACTIVAR SONIDO" : "SILENCIAR SONIDO");
-    row(379, "P", "REANUDAR");
-    row(417, "ESC", "SALIR");
+    row(248, "WASD / FLECHAS", "MOVERSE");
+    row(286, "MANTENER SHIFT", U"C\u00c1MARA LENTA AL 45%");
+    row(324, "MANTENER ESPACIO", U"GUIAR AL M\u00c1S FUERTE");
+    row(362, "M", muted ? "ACTIVAR SONIDO" : "SILENCIAR SONIDO");
+    row(400, "P", "REANUDAR");
+    row(438, "ESC", "SALIR");
+    label(target, font, U"SI AGOT\u00c1S UNA BARRA, ESPER\u00c1 LA RECARGA COMPLETA.", 243, 476, 9, dim);
 }
 
-void endPanel(sf::RenderTarget& target, const sf::Font& font, int score, int bestScore)
+void endPanel(sf::RenderTarget& target, const sf::Font& font, int score, int bestScore, int bestCombo)
 {
     panel(target, 216, 170, 528, 292, gold);
     label(target, font, "FIN DE PARTIDA", 248, 200, 27, ivory);
@@ -114,11 +152,13 @@ void endPanel(sf::RenderTarget& target, const sf::Font& font, int score, int bes
     label(target, font, scoreNumber(score), 248, 297, 24, gold);
     label(target, font, U"R\u00c9CORD DE SESI\u00d3N", 487, 273, 9, dim);
     label(target, font, scoreNumber(std::max(score, bestScore)), 487, 299, 19, ivory);
-    rect(target, 248, 355, 464, 2, seam);
-    keycap(target, font, "ENTER", 248, 383, 72);
-    label(target, font, "VOLVER A JUGAR", 334, 389, 12, ivory);
-    keycap(target, font, "ESC", 568, 383, 49);
-    label(target, font, "SALIR", 632, 390, 10, dim);
+    label(target, font, "MEJOR COMBO", 248, 343, 10, dim);
+    label(target, font, bestCombo > 0 ? "x" + std::to_string(bestCombo) : "NINGUNO", 388, 339, 16, cyan);
+    rect(target, 248, 374, 464, 2, seam);
+    keycap(target, font, "ENTER", 248, 397, 72);
+    label(target, font, "VOLVER A JUGAR", 334, 403, 12, ivory);
+    keycap(target, font, "ESC", 568, 397, 49);
+    label(target, font, "SALIR", 632, 404, 10, dim);
 }
 }
 
@@ -136,41 +176,50 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     rect(target, 0, 2, 960, 2, steel);
     rect(target, 0, 56, 960, 2, seam);
     rect(target, 0, 58, 960, 2, {149, 96, 55});
-    for (float x : {234.f, 412.f, 626.f, 836.f})
+    for (float x : {168.f, 280.f, 428.f, 696.f, 836.f})
         rect(target, x, 11, 2, 34, seam);
 
-    label(target, font, "PUNTOS", 26, 9, 9, dim);
-    label(target, font, scoreNumber(combat.score()), 26, 25, 23, gold);
+    label(target, font, "PUNTOS", 16, 9, 9, dim);
+    const auto score = scoreNumber(combat.score());
+    label(target, font, score, 16, 25, std::min(21u, 144u / static_cast<unsigned>(score.size())), gold);
     const auto combo = combat.combo();
     if (combo.kills >= 2 && !paused)
         comboNotice(target, font, combo);
+    const int milestone = combat.comboMilestone();
+    if (milestone > 0 && !paused && !combat.gameOver())
+        milestoneNotice(target, font, milestone);
 
-    label(target, font, "VIDAS", 260, 9, 9, dim);
+    label(target, font, "VIDAS", 181, 9, 9, dim);
     sf::Sprite plane(lifeTexture);
     plane.setOrigin(sf::Vector2f(lifeTexture.getSize()) * 0.5f);
-    plane.setScale({0.38f, 0.38f});
+    plane.setScale({0.29f, 0.29f});
     for (int i = 0; i < 3; ++i)
     {
-        plane.setPosition({280.f + i * 44.f, 36.f});
+        plane.setPosition({193.f + i * 31.f, 36.f});
         plane.setColor(i < combat.lives() ? sf::Color::White : sf::Color{108, 137, 145, 135});
         target.draw(plane);
     }
 
     if (pickupNotice)
-        label(target, font, "CADENCIA +50%", 438, 9, 9, cyan);
+        label(target, font, "CADENCIA +50%", 295, 9, 9, cyan);
     else
-        label(target, font, powerNotice ? "ARMA MEJORADA" : "POTENCIA", 438, 9, 9, powerNotice ? gold : dim);
+        label(target, font, powerNotice ? "ARMA MEJORADA" : "POTENCIA", 295, 9, 9, powerNotice ? gold : dim);
     for (int i = 0; i < 5; ++i)
     {
-        const float x = 438.f + i * 29.f;
+        const float x = 295.f + i * 24.f;
         const bool active = i < combat.power();
-        rect(target, x, 27, 25, 15, active ? (powerNotice ? gold : cyan) : seam);
-        rect(target, x + 2, active ? 38.f : 29.f, 21, active ? 2.f : 11.f, active ? steel : ink);
+        rect(target, x, 27, 20, 15, active ? (powerNotice ? gold : cyan) : seam);
+        rect(target, x + 2, active ? 38.f : 29.f, 16, active ? 2.f : 11.f, active ? steel : ink);
     }
 
-    label(target, font, "DISTANCIA", 652, 9, 9, dim);
+    const bool flying = !paused && !combat.gameOver();
+    abilityMeter(target, font, "SHIFT", U"PRECISI\u00d3N", 7, combat.precisionCharge(),
+                 flying && combat.precisionActive(), combat.precisionRecharging(), cyan);
+    abilityMeter(target, font, "ESPACIO", "GUIADO", 31, combat.guidanceCharge(),
+                 flying && combat.guidanceActive(), combat.guidanceRecharging(), gold);
+    label(target, font, "DISTANCIA", 707, 9, 9, dim);
     const auto meters = std::to_string(static_cast<long long>(combat.distance())) + " m";
-    label(target, font, meters, 652, 28, 16, ivory);
+    label(target, font, meters, 707, 28, std::min(15u, 121u / static_cast<unsigned>(meters.size())), ivory);
     if (!combat.gameOver())
     {
         keycap(target, font, "P", 857, 18, 27);
@@ -178,7 +227,7 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     }
 
     if (combat.gameOver())
-        endPanel(target, font, combat.score(), bestScore);
+        endPanel(target, font, combat.score(), bestScore, combat.bestCombo());
     else if (paused)
         pausePanel(target, font, muted);
     else if (combat.elapsed() < 2.8f)

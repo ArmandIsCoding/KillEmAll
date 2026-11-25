@@ -48,17 +48,14 @@ const sf::Texture& Player::textureFor(sf::Vector2f direction) const
 	return textures.idle;
 }
 
-void Player::update(sf::Vector2f direction, sf::Time elapsed, sf::Vector2f worldSize, bool precision)
+void Player::update(sf::Vector2f direction, sf::Time elapsed, sf::Vector2f worldSize)
 {
 	setTexture(textureFor(direction));
 	muzzle.y = direction.y < 0.f ? -10.f : direction.y > 0.f ? 7.f : 0.f;
 
 	auto position = getPosition();
 	if (direction != sf::Vector2f{})
-	{
-		const float speed = precision ? flightSpeed * 0.45f : flightSpeed;
-		position += direction.normalized() * (speed * elapsed.asSeconds());
-	}
+		position += direction.normalized() * (flightSpeed * elapsed.asSeconds());
 
 	const auto size = getBounds().size;
 	setPosition({ clampToWorld(position.x, size.x, worldSize.x),

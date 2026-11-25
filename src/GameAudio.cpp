@@ -7,8 +7,9 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
     : musicData(folder / "coast-patrol.wav"), cannonData(folder / "cannon.wav"),
       blastData(folder / "blast.wav"), gunshipBlastData(folder / "gunship-blast.wav"), impactData(folder / "impact.wav"),
       powerData(folder / "power.wav"), comboData(folder / "combo-note.wav"),
+      fanfareFiveData(folder / "combo-five.wav"), fanfareTenData(folder / "combo-ten.wav"),
       music(musicData), cannon(cannonData), blast(blastData), wave(blastData),
-      impact(impactData), upgrade(powerData), comboNote(comboData)
+      impact(impactData), upgrade(powerData), comboNote(comboData), fanfare(fanfareFiveData)
 {
     music.setLooping(true);
     music.setVolume(24.f);
@@ -19,14 +20,17 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
     impact.setVolume(59.f);
     upgrade.setVolume(42.f);
     comboNote.setVolume(50.f);
+    fanfare.setVolume(55.f);
 }
 
 void GameAudio::restart()
 {
     setPlaying(false);
+    setTimeScale(1.f);
     music.stop();
     lastVolley = 0;
     lastExplosion = 0;
+    lastMilestone = 0;
     lastLives = 3;
     setPlaying(true);
 }
@@ -41,6 +45,7 @@ void GameAudio::setPlaying(bool playing)
         stopBattleSounds();
         comboNote.stop();
         pendingComboNotes.clear();
+        fanfare.stop();
     }
 }
 
@@ -61,6 +66,23 @@ void GameAudio::toggleMute()
     setPlaying(running);
 }
 
+void GameAudio::setTimeScale(float scale)
+{
+    if (timeScale_ == scale)
+        return;
+    timeScale_ = scale;
+    music.setPitch(scale);
+    cannon.setPitch(scale);
+    blast.setPitch(scale);
+    wave.setPitch(1.65f * scale);
+    impact.setPitch(scale);
+    upgrade.setPitch(scale);
+    comboNote.setPitch(comboPitch_ * scale);
+    fanfare.setPitch(scale);
+    for (auto& voice : gunshipBlasts)
+        voice.setPitch(scale);
+}
+
 void GameAudio::playGunshipBlast()
 {
     const auto freeVoice = std::find_if(gunshipBlasts.begin(), gunshipBlasts.end(), [](const sf::Sound& sound) {
@@ -68,16 +90,19 @@ void GameAudio::playGunshipBlast()
     });
     auto& voice = freeVoice == gunshipBlasts.end() ? gunshipBlasts.emplace_back(gunshipBlastData) : *freeVoice;
     voice.setVolume(53.f);
+    voice.setPitch(timeScale_);
     voice.play();
 }
 
 void GameAudio::update(const Combat& combat, bool weaponUpgraded)
 {
+    setTimeScale(combat.timeScale());
     const bool audibleFrame = running && !silent;
     if (running && combat.gameOver())
     {
         running = false;
         stopBattleSounds();
+        fanfare.stop();
         if (!silent)
             impact.play();
     }
@@ -108,9 +133,17 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
     {
         const float steps = static_cast<float>(pendingComboNotes.front() - 1);
         pendingComboNotes.pop_front();
-        comboNote.setPitch(1.f + steps / (12.f + steps));
+        comboPitch_ = 1.f + steps / (12.f + steps);
+        comboNote.setPitch(comboPitch_ * timeScale_);
         comboNote.play();
     }
+    const unsigned milestone = combat.comboMilestoneSerial();
+    if (running && !silent && milestone && milestone != lastMilestone)
+    {
+        fanfare.setBuffer(combat.comboMilestone() == 5 ? fanfareFiveData : fanfareTenData);
+        fanfare.play();
+    }
+    lastMilestone = milestone;
     lastVolley = combat.volleysFired();
     if (!combat.explosions().empty())
         lastExplosion = combat.explosions().back().seed;

@@ -21,13 +21,18 @@ public:
 private:
     void playGunshipBlast();
     void stopBattleSounds();
+    void setTimeScale(float scale);
 
     sf::SoundBuffer musicData, cannonData, blastData, gunshipBlastData, impactData, powerData, comboData;
-    sf::Sound music, cannon, blast, wave, impact, upgrade, comboNote;
+    sf::SoundBuffer fanfareFiveData, fanfareTenData;
+    sf::Sound music, cannon, blast, wave, impact, upgrade, comboNote, fanfare;
     std::deque<sf::Sound> gunshipBlasts;
     std::deque<int> pendingComboNotes;
+    float timeScale_ = 1.f;
+    float comboPitch_ = 1.f;
     unsigned int lastVolley = 0;
     unsigned int lastExplosion = 0;
+    unsigned lastMilestone = 0;
     int lastLives = 3;
     bool running = false;
     bool silent = false;

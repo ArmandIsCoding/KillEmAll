@@ -4,7 +4,7 @@ Un *bullet hell* de desplazamiento horizontal hecho en **C++17 y SFML 3.1**. Ten
 
 [Compilar y jugar en Windows](#compilar-en-visual-studio) · [Controles](#controles)
 
-![Cuatro naves explotan en cadena sobre el puerto. Debajo del puntaje, el contador crece y cambia de turquesa a verde y a dorado al llegar a COMBO x4 +600.](docs/media/combate.gif)
+![El avión activa la cámara lenta y el guiado. Los proyectiles giran hacia los blindados, aparece ¡IMPARABLE! y la cadena alcanza COMBO x7 +2100.](docs/media/combate.gif)
 
 ## Los primeros 45 segundos
 
@@ -27,11 +27,18 @@ Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno 
 | Tecla | Acción |
 | --- | --- |
 | **WASD** o **flechas** | Moverte en ocho direcciones. |
-| **Shift** (mantener) | Volar más despacio y ver el punto vulnerable del avión. Guiá ese punto por los huecos entre las balas fucsias. |
+| **Shift** (mantener) | Activar el vuelo de precisión. Toda la acción pasa al **45 %** de su velocidad y se ilumina el punto vulnerable del avión. |
+| **Barra espaciadora** (mantener) | Guiar los disparos dorados y verdes hacia el enemigo más fuerte en pantalla. |
 | **P** | Pausar o reanudar. |
 | **M** | Silenciar o activar la música y los efectos. |
 | **Enter** o **R** | Volver a despegar después de perder las tres vidas. |
 | **Esc** | Salir del juego. |
+
+Podés usar **precisión y guiado juntos**. La cámara lenta alcanza el vuelo, el desplazamiento de la costa, los enemigos, las balas de ambos bandos, la cadencia del cañón y las explosiones. También baja el ritmo de la música, los sonidos de combate y las fanfarrias.
+
+Con el **guiado**, los tiros nuevos salen del cañón con su trayectoria habitual y enseguida doblan. Los que ya están en vuelo también buscan el blanco. Todos apuntan al mismo enemigo, con prioridad para el blindado, luego el interceptor y por último el explorador. Si cae el blanco, los proyectiles que siguen en vuelo giran hacia el siguiente. Al soltar la barra, los tiros retoman su trayectoria habitual desde el rumbo que llevaban, incluido el zigzag de los verdes.
+
+Las dos barras de la cabecera arrancan llenas. La de **precisión** da **4 segundos** de uso continuo y tarda **8 segundos** en llenarse desde cero. La de **guiado** da **5 segundos** y tarda **10 segundos** en llenarse. Soltá la tecla y el poder recupera carga. Si lo agotás, la barra marca **RECARGA** hasta llenarse por completo. Si seguís manteniendo la tecla, el poder vuelve a activarse al llenarse. Estos tiempos se miden en segundos reales de juego, incluso en cámara lenta. En pausa las barras se congelan.
 
 ## Tráfico sobre el puerto
 
@@ -41,9 +48,13 @@ El **explorador** apunta a tu posición. El **interceptor** dispara en abanicos 
 
 Cuando cae un blindado, un relámpago ilumina la costa y la cámara se sacude al ritmo de la explosión grave. La **onda expansiva ámbar** barre las balas y los orbes enemigos justo cuando el anillo los alcanza. Cerca del casco, el golpe puede destruir otro blindado intacto. En la periferia hace menos daño y puede rematar una nave averiada. Después de los 30 segundos, algunos convoyes traen dos blindados juntos. Derribá uno para encadenar la segunda explosión y sumar los puntos de ambas bajas.
 
+Con el arma al nivel cinco, uno de cada dos convoyes dobles llega con ocho exploradores adicionales. Vuelan en dos filas junto a los blindados y dejan libre la mitad inferior de su formación. Si esperás a que entren las escoltas antes de derribar el primer blindado, una misma onda y sus explosiones en cadena pueden llevarte hasta el **x10**.
+
 El blindado que inicia la cadena marca la primera nota. Si su onda derriba otra nave, aparece **COMBO x2 +100** debajo del puntaje. El contador crece y pasa de turquesa en x2 a dorado en x4, rosa en x6 y marfil en x10, donde alcanza su tamaño máximo. Cada baja de la cadena suena un poco más aguda que la anterior. Si varias naves explotan juntas, las notas suenan una detrás de otra. [Escuchá las cuatro notas de un combo x4](docs/media/combo-x4.wav).
 
 La tercera baja agrega 200 puntos extra y la cuarta agrega 300. Cuando ves **COMBO x4 +600** en dorado, esos 600 ya están incluidos en tu puntaje, además del valor de cada enemigo. Las bajas por las ondas de los blindados que explotan en cadena también cuentan para ese combo.
+
+Al llegar a **x5** aparece **¡IMPARABLE!** y suena una fanfarria corta. En **x10** aparece **¡LEGENDARIO!** con una fanfarria propia. Si una misma onda cruza ambos hitos de golpe, verás y escucharás los dos en orden. Al perder la última vida, **MEJOR COMBO** muestra la cadena más larga de esa partida.
 
 ## Compilar en Visual Studio
 
@@ -69,6 +80,6 @@ La compilación coloca la carpeta `assets` junto al ejecutable. Si movés el jue
 
 ## Dentro del juego
 
-Para cambiar cuándo aparecen las formaciones o cuántos proyectiles salen por salva, empezá por el [sistema de combate](src/Combat.cpp). El [renderizador](src/BattleRenderer.cpp) dibuja ese combate con sprites, humo y esquirlas. El [jugador](src/Player.cpp) se encarga de las poses y del vuelo de precisión.
+El [sistema de combate](src/Combat.cpp) gestiona las formaciones, las salvas y la energía de los poderes. El [renderizador](src/BattleRenderer.cpp) dibuja el combate con sprites, humo y esquirlas. El [jugador](src/Player.cpp) se encarga de las poses y el movimiento del avión.
 
 El proyecto se distribuye bajo la [licencia MIT](LICENSE). La tipografía **Press Start 2P** incluye su [licencia SIL Open Font License](assets/arcade/font/OFL.txt).

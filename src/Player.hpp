@@ -24,7 +24,7 @@ public:
     Player(const PlayerTextures& textures, sf::Vector2f startingPosition);
     Player(PlayerTextures&&, sf::Vector2f) = delete;
 
-    void update(sf::Vector2f direction, sf::Time elapsed, sf::Vector2f worldSize, bool precision = false);
+    void update(sf::Vector2f direction, sf::Time elapsed, sf::Vector2f worldSize);
     sf::Vector2f muzzleOffset() const { return muzzle; }
 
 private:

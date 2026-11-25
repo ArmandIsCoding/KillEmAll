@@ -2,6 +2,7 @@
 
 #include <SFML/System/Vector2.hpp>
 
+#include <deque>
 #include <optional>
 #include <random>
 #include <unordered_map>
@@ -29,6 +30,13 @@ struct Enemy
 
 struct Shot
 {
+    struct TrailSample
+    {
+        float age;
+        sf::Vector2f position;
+        sf::Vector2f velocity;
+    };
+
     ShotKind kind;
     sf::Vector2f position;
     sf::Vector2f velocity;
@@ -40,8 +48,13 @@ struct Shot
     float verticalAcceleration = 0.f;
     float trailPower = 0.f;
     bool spent = false;
+    unsigned sparkSeed = 0;
+    float lastGuidedAge = -1.f;
+    float waveDriftX = 0.f;
+    std::vector<TrailSample> trailHistory{};
 
-    bool hasTrail() const { return kind == ShotKind::Player && verticalAcceleration != 0.f; }
+    bool hasTrail() const { return kind == ShotKind::Player && (verticalAcceleration != 0.f || !trailHistory.empty()); }
+    TrailSample trailSample(float lookback) const;
 };
 
 struct FadingTrail
@@ -85,7 +98,16 @@ public:
     static constexpr float waveBlastRadius = 39.f;
     static constexpr float trailLifetime = 0.38f;
     static constexpr float gunshipShakeAmplitude = 7.f;
+    static constexpr float maxStep = 1.f / 120.f;
 
+    void setPowerInput(bool precisionHeld, bool guidanceHeld);
+    float precisionCharge() const { return static_cast<float>(precision_.charge); }
+    float guidanceCharge() const { return static_cast<float>(guidance_.charge); }
+    bool precisionActive() const { return !gameOver() && precision_.active(); }
+    bool guidanceActive() const { return !gameOver() && guidance_.active(); }
+    bool precisionRecharging() const { return precision_.depleted; }
+    bool guidanceRecharging() const { return guidance_.depleted; }
+    float timeScale() const { return precisionActive() ? 0.45f : 1.f; }
     void update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffset = {49.f, 0.f});
     void reset();
 
@@ -98,6 +120,9 @@ public:
     unsigned pickupsCollected() const { return pickupsCollected_; }
     int score() const { return score_; }
     Combo combo() const { return !gameOver() && elapsed_ < comboUntil_ ? lastCombo_ : Combo{}; }
+    int comboMilestone() const { return gameOver() || milestones_.empty() ? 0 : milestones_.front(); }
+    unsigned comboMilestoneSerial() const { return comboMilestone() ? finishedMilestones_ + 1 : 0; }
+    int bestCombo() const { return bestCombo_; }
     int lives() const { return lives_; }
     int power() const;
     unsigned int volleysFired() const { return volleysFired_; }
@@ -107,6 +132,16 @@ public:
     bool invulnerable() const { return grace_ > 0.f; }
 
 private:
+    struct PowerMeter
+    {
+        double charge = 1.0;
+        bool held = false;
+        bool depleted = false;
+
+        bool active() const { return held && !depleted; }
+        void advance(float realDt, float useSeconds, float refillSeconds);
+    };
+
     struct Chain
     {
         Combo tally{1, 0}; // The gunship whose explosion started the chain.
@@ -130,6 +165,8 @@ private:
     void explodeEnemy(const Enemy& enemy, unsigned chainId = 0);
     void explode(sf::Vector2f position, ExplosionKind kind, unsigned chainId = 0);
 
+    PowerMeter precision_;
+    PowerMeter guidance_;
     std::vector<Enemy> enemies_;
     std::vector<Shot> shots_;
     std::vector<FadingTrail> fadingTrails_;
@@ -137,6 +174,10 @@ private:
     std::unordered_map<unsigned, Chain> chains_;
     Combo lastCombo_;
     float comboUntil_ = 0.f;
+    int bestCombo_ = 0;
+    std::deque<int> milestones_;
+    unsigned finishedMilestones_ = 0;
+    float milestoneUntil_ = 0.f;
     std::optional<FireRatePickup> fireRatePickup_;
     std::minstd_rand pickupRandom_{std::random_device{}()};
     std::minstd_rand weaponRandom_{std::random_device{}()};
