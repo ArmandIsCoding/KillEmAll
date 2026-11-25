@@ -23,6 +23,7 @@ struct Enemy
     float fireTimer;
     unsigned volleys;
     float hitFlash;
+    std::vector<unsigned> shockwavesHit{};
 };
 
 struct Shot
@@ -62,6 +63,9 @@ struct Explosion
     float duration;
     ExplosionKind kind;
     unsigned seed;
+    float sweptRadius = 0.f;
+
+    float shockwaveRadius() const;
 };
 
 class Combat
@@ -103,6 +107,7 @@ private:
     void fireVolley(sf::Vector2f muzzle);
     void updateShots(float dt);
     void collide(sf::Vector2f playerPosition);
+    void sweepGunshipShockwaves();
     void hitEnemies(Shot& shot);
     void damage(Enemy& enemy, int amount);
     void hitPlayer(sf::Vector2f position);

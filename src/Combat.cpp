@@ -57,6 +57,12 @@ float waveOffset(float age, float phase)
 }
 }
 
+float Explosion::shockwaveRadius() const
+{
+    const float remaining = 1.f - std::clamp(age / duration, 0.f, 1.f);
+    return 14.f + 112.f * (1.f - remaining * remaining);
+}
+
 void Combat::reset()
 {
     *this = Combat{};
@@ -95,8 +101,6 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
         const float slice = std::min(dt, 1.f / 120.f);
         for (auto& explosion : explosions_)
             explosion.age += slice;
-        explosions_.erase(std::remove_if(explosions_.begin(), explosions_.end(),
-            [](const Explosion& effect) { return effect.age >= effect.duration; }), explosions_.end());
         for (auto& trail : fadingTrails_)
             trail.age += slice;
         fadingTrails_.erase(std::remove_if(fadingTrails_.begin(), fadingTrails_.end(),
@@ -104,7 +108,9 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
 
         if (!gameOver())
             step(slice, playerPosition, muzzleOffset);
-        else if (explosions_.empty() && fadingTrails_.empty())
+        explosions_.erase(std::remove_if(explosions_.begin(), explosions_.end(),
+            [](const Explosion& effect) { return effect.age >= effect.duration; }), explosions_.end());
+        if (gameOver() && explosions_.empty() && fadingTrails_.empty())
             break;
 
         dt -= slice;
@@ -166,7 +172,10 @@ void Combat::spawnFormation()
         case 3: // escorted heavy
             add(EnemyKind::Gunship, 0.f, 0.f, 0.f);
             add(EnemyKind::Scout, 85.f, -82.f, 0.f);
-            add(EnemyKind::Scout, 85.f, 82.f, pi);
+            if (elapsed_ >= 30.f && (formation_ / 4) % 2 == 1)
+                add(EnemyKind::Gunship, 70.f, 64.f, 0.f);
+            else
+                add(EnemyKind::Scout, 85.f, 82.f, pi);
             break;
     }
     ++formation_;
@@ -404,13 +413,54 @@ void Combat::hitEnemies(Shot& shot)
     }
 }
 
+void Combat::sweepGunshipShockwaves()
+{
+    constexpr float coreRadius = 90.f;
+    // New waves can reallocate the vector. Process their initial pulse in this same sweep.
+    for (std::size_t i = 0; i < explosions_.size(); ++i)
+    {
+        if (explosions_[i].kind != ExplosionKind::Gunship)
+            continue;
+        const Explosion wave = explosions_[i];
+        const float front = wave.shockwaveRadius();
+        explosions_[i].sweptRadius = front;
+
+        const auto touchesFront = [&](sf::Vector2f position, float radius) {
+            const float distanceSquared = (position - wave.position).lengthSquared();
+            const float inner = std::max(0.f, wave.sweptRadius - radius);
+            const float outer = front + radius;
+            return distanceSquared >= inner * inner && distanceSquared <= outer * outer;
+        };
+        for (auto& shot : shots_)
+            if (!friendly(shot.kind) && touchesFront(shot.position, shot.radius))
+                shot.spent = true;
+
+        for (auto& enemy : enemies_)
+        {
+            if (enemy.health <= 0 || enemy.position.x > width || !touchesFront(enemy.position, enemy.radius))
+                continue;
+            auto& hits = enemy.shockwavesHit;
+            if (std::find(hits.begin(), hits.end(), wave.seed) != hits.end())
+                continue;
+            const bool inCore = overlaps(wave.position, coreRadius, enemy.position, enemy.radius);
+            damage(enemy, inCore ? stats(EnemyKind::Gunship).health : 3);
+            if (enemy.health > 0)
+                hits.push_back(wave.seed);
+        }
+    }
+}
+
 void Combat::collide(sf::Vector2f playerPosition)
 {
     for (auto& shot : shots_)
-    {
         if (friendly(shot.kind))
             hitEnemies(shot);
-        else if (overlaps(shot.position, shot.radius, playerPosition, playerHitRadius))
+
+    sweepGunshipShockwaves();
+    for (auto& shot : shots_)
+    {
+        if (!friendly(shot.kind) && !shot.spent &&
+            overlaps(shot.position, shot.radius, playerPosition, playerHitRadius))
         {
             shot.spent = true;
             hitPlayer(playerPosition);

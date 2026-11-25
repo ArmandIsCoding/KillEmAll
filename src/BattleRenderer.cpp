@@ -322,7 +322,7 @@ namespace
 	{
 		const float t = std::clamp(effect.age / effect.duration, 0.f, 1.f);
 		const float remaining = 1.f - t;
-		const float radius = 14.f + 112.f * (1.f - remaining * remaining);
+		const float radius = effect.shockwaveRadius();
 		const Color gold = faded({ 255, 203, 124 }, 0.82f * remaining);
 		const Color edge = faded({ 255, 242, 205 }, 0.96f * remaining);
 		const auto front = [&](Vec direction) {

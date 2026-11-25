@@ -4,7 +4,7 @@ Un *bullet hell* de desplazamiento horizontal hecho en **C++17 y SFML 3.1**. Ten
 
 [Compilar y jugar en Windows](#compilar-en-visual-studio) · [Controles](#controles)
 
-![El avión dispara sobre el puerto. Las estelas doradas sueltan chispas y un anillo ámbar se expande al estallar el blindado.](docs/media/combate.gif)
+![Dos blindados explotan en cadena sobre el puerto. Sus anillos ámbar se expanden y barren las balas fucsias a su paso.](docs/media/combate.gif)
 
 ## Los primeros 45 segundos
 
@@ -37,7 +37,9 @@ Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno 
 
 ![De izquierda a derecha, tu avión, el explorador rojo de 100 puntos, el interceptor de 200 y el blindado de 500.](docs/media/hangar.png)
 
-El **explorador** apunta a tu posición. El **interceptor** dispara en abanicos de tres. El **blindado** llega escoltado y alterna el ángulo de sus abanicos de siete proyectiles. El hueco por el que pasaste la primera vez cambia de lugar en la siguiente descarga. Cuando cae un blindado, un relámpago ilumina la costa y una onda expansiva ámbar se abre desde el casco. La cámara se sacude al ritmo de la explosión grave.
+El **explorador** apunta a tu posición. El **interceptor** dispara en abanicos de tres. El **blindado** llega escoltado y alterna el ángulo de sus abanicos de siete proyectiles. El hueco por el que pasaste la primera vez cambia de lugar en la siguiente descarga.
+
+Cuando cae un blindado, un relámpago ilumina la costa y la cámara se sacude al ritmo de la explosión grave. La **onda expansiva ámbar** barre las balas y los orbes enemigos justo cuando el anillo los alcanza. Cerca del casco, el golpe puede destruir otro blindado intacto. En la periferia hace menos daño y puede rematar una nave averiada. Después de los 30 segundos, algunos convoyes traen dos blindados juntos. Derribá uno para encadenar la segunda explosión y sumar los puntos de ambas bajas.
 
 ## Compilar en Visual Studio
 
