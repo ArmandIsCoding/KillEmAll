@@ -22,6 +22,12 @@ constexpr std::array<float, Combat::maxDroneUpgrades + 1> droneReloads{0.42f, 0.
 constexpr float salvoOpeningTime = 0.24f;
 constexpr float burstSpacing = 0.105f;
 constexpr float singleReload = 0.23f;
+constexpr std::array<unsigned, Combat::maxWeaponRank> weaponRankKills{6, 18, 36, 64, 100, 150, 220, 320, 460, 660};
+
+float rankedReload(float base, unsigned rank)
+{
+    return base * (1.f - 0.015f * rank);
+}
 
 struct BatteryStats
 {
@@ -41,6 +47,21 @@ constexpr BatteryStats battery(TurretKind kind)
         case TurretKind::Burst:  return {{ 77.f, -39.f}, 19.f, 0.55f, 1.8f, 2.9f};
     }
     return {};
+}
+
+// Keep the opening approach, then tighten the schedule gradually throughout the sortie.
+constexpr float openingDuration = 24.f;
+
+float flightPressure(float elapsed)
+{
+    const float time = std::max(0.f, elapsed - openingDuration);
+    return time / (time + 150.f);
+}
+
+int barrageStage(float elapsed)
+{
+    constexpr std::array<float, 5> thresholds{40.f, 90.f, 160.f, 260.f, 420.f};
+    return static_cast<int>(std::upper_bound(thresholds.begin(), thresholds.end(), elapsed) - thresholds.begin());
 }
 
 struct CannonPattern
@@ -393,6 +414,13 @@ int Combat::power() const
     return 1 + static_cast<int>(std::upper_bound(upgrades.begin(), upgrades.end(), elapsed_) - upgrades.begin());
 }
 
+std::optional<unsigned> Combat::nextWeaponRankKills() const
+{
+    if (weaponRank_ == maxWeaponRank)
+        return {};
+    return weaponRankKills[weaponRank_];
+}
+
 sf::Vector2f Combat::screenShakeOffset() const
 {
     constexpr float duration = 0.36f;
@@ -420,11 +448,12 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
     {
         const float realSlice = std::min(dt, maxStep);
         const float slice = realSlice * timeScale();
-        if (laserPulse_)
+        if (!laserPulses_.empty())
         {
-            laserPulse_->age += slice;
-            if (laserPulse_->age >= LaserPulse::duration)
-                laserPulse_.reset();
+            for (auto& ray : laserPulses_)
+                ray.age += slice;
+            if (laserPulses_.front().age >= LaserPulse::duration)
+                laserPulses_.clear();
         }
         for (auto& explosion : explosions_)
             explosion.age += slice;
@@ -479,7 +508,9 @@ void Combat::step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffs
         const float period = recoveryBlinkPeriods[killsPerLife - recoveryKills_ - 1];
         *recoveryBlinkPhase_ = std::fmod(*recoveryBlinkPhase_ + dt / period, 1.f);
     }
-    distance_ += dt * (105.f + std::min(55.f, elapsed_ * 0.5f));
+    const float pressure = flightPressure(elapsed_);
+    const float opening = std::min(elapsed_, openingDuration);
+    distance_ += dt * (105.f + 0.5f * opening + 220.f * pressure);
     grace_ = std::max(0.f, grace_ - dt);
     updateBattleship(dt);
     // Keep a few aerial escorts during the encounter and give the battleship the water lane.
@@ -487,7 +518,7 @@ void Combat::step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffs
     if (nextFormation_ <= 0.f)
     {
         spawnFormation();
-        nextFormation_ += std::max(1.55f, 2.95f - elapsed_ * 0.022f);
+        nextFormation_ += (2.95f - 0.022f * opening) / (1.f + 2.65f * pressure);
     }
     if (!battleship_)
     {
@@ -495,7 +526,7 @@ void Combat::step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffs
         if (nextBoat_ <= 0.f)
         {
             spawnBoat();
-            nextBoat_ += 13.5f - std::min(4.f, elapsed_ * 0.055f);
+            nextBoat_ += (13.5f - 0.055f * opening) / (1.f + 0.94f * pressure);
         }
     }
     updatePickup(dt, playerPosition);
@@ -514,6 +545,7 @@ void Combat::spawnFormation()
     const float lane = lanes[formation_ % lanes.size()];
     const unsigned pattern = formation_ % 4;
     const float mirror = (formation_ / 4) % 2 == 0 ? 1.f : -1.f;
+    const float flightSpeed = 1.f + 0.7f * flightPressure(elapsed_);
     auto add = [&](EnemyKind kind, float delayX, float offsetY, float phase,
                    FlightPath flight = FlightPath::Weave, bool rear = false) {
         const auto type = stats(kind);
@@ -522,7 +554,7 @@ void Combat::spawnFormation()
         const float y = flight == FlightPath::Weave ? center + type.weave * std::sin(phase) : center;
         // The heavy convoy holds formation so its escorts stay within shockwave range.
         const float speedScale = pattern == 3 ? 1.f : std::uniform_real_distribution<float>{0.82f, 1.22f}(flightRandom_);
-        const float speed = flight == FlightPath::Pursuit ? 181.f : type.speed;
+        const float speed = (flight == FlightPath::Pursuit ? 181.f : type.speed) * flightSpeed;
         enemies_.push_back({kind, {x, y}, {(rear ? 1.f : -1.f) * speed * speedScale, 0.f}, type.radius, 0.f, type.health,
                             center, phase, 0.72f + delayX * 0.002f, 0, 0.f});
         enemies_.back().flight = flight;
@@ -565,7 +597,7 @@ void Combat::spawnFormation()
                             const float y = row == 0 ? -46.f + 16.f * (column % 2) : 108.f - 16.f * (column % 2);
                             add(EnemyKind::Scout, x, y, 0.6f * column + row * pi);
                             auto& escort = enemies_.back();
-                            escort.velocity.x = -stats(EnemyKind::Gunship).speed;
+                            escort.velocity.x = -stats(EnemyKind::Gunship).speed * flightSpeed;
                             escort.fireTimer = 3.2f + 0.45f * (column * 2 + row);
                         }
                     }
@@ -575,11 +607,20 @@ void Combat::spawnFormation()
                 add(EnemyKind::Scout, 85.f, 82.f, pi);
             break;
     }
+    const int stage = barrageStage(elapsed_);
+    if (pattern != 3 && stage >= 2)
+    {
+        const float farLane = lane < height * 0.5f ? 388.f : 146.f;
+        add(EnemyKind::Striker, 156.f, farLane - lane, 0.8f, FlightPath::CrossLane);
+        if (stage >= 4)
+            add(EnemyKind::Scout, 224.f, farLane - lane + 45.f * mirror, 1.7f);
+    }
     ++formation_;
 }
 
 void Combat::updateEnemies(float dt, sf::Vector2f playerPosition)
 {
+    const float fireRate = 1.f + 0.004f * std::min(elapsed_, openingDuration) + 0.82f * flightPressure(elapsed_);
     for (auto& enemy : enemies_)
     {
         enemy.age += dt;
@@ -605,9 +646,16 @@ void Combat::updateEnemies(float dt, sf::Vector2f playerPosition)
             // A plane passing close to the player never fires at point-blank range.
             if ((enemy.position - playerPosition).lengthSquared() > 125.f * 125.f)
                 fireEnemy(enemy, playerPosition);
-            enemy.fireTimer += type.reload / (1.f + std::min(0.35f, elapsed_ * 0.004f));
+            enemy.fireTimer += type.reload / fireRate;
         }
     }
+}
+
+void Combat::fireEnemyFan(sf::Vector2f muzzle, float angle, int pairs, float spacing, float speed, ShotKind kind, float radius)
+{
+    // Extra pairs widen the fan while preserving the gaps a pilot can dodge through.
+    for (int i = -pairs; i <= pairs; ++i)
+        shots_.push_back({kind, muzzle, velocityAt(angle + spacing * i, speed), radius, 0.f, 0.f});
 }
 
 void Combat::fireEnemy(Enemy& enemy, sf::Vector2f playerPosition)
@@ -615,33 +663,31 @@ void Combat::fireEnemy(Enemy& enemy, sf::Vector2f playerPosition)
     const auto muzzle = enemy.position + sf::Vector2f{enemy.velocity.x > 0.f ? enemy.radius : -enemy.radius, 0.f};
     const auto aim = playerPosition - muzzle;
     const float angle = std::atan2(aim.y, aim.x);
-    const float speed = 130.f + std::min(74.f, elapsed_ * 0.95f);
-    auto shoot = [&](float heading, float velocity, ShotKind kind) {
-        shots_.push_back({kind, muzzle, velocityAt(heading, velocity),
-                          kind == ShotKind::EnemyOrb ? 5.f : 4.f, 0.f, 0.f});
-    };
+    const float opening = std::min(elapsed_, openingDuration);
+    const float pressure = flightPressure(elapsed_);
+    const float speed = 130.f + 0.95f * opening + 104.f * pressure;
+    const int stage = barrageStage(elapsed_);
+    const int extraPairs = (stage + static_cast<int>(enemy.volleys % 2)) / 2;
     switch (enemy.kind)
     {
         case EnemyKind::Scout:
-            shoot(angle, speed, ShotKind::Enemy);
+            fireEnemyFan(muzzle, angle, (stage + static_cast<int>(enemy.volleys % 3)) / 3, 0.22f, speed, ShotKind::Enemy, 4.f);
             break;
         case EnemyKind::Striker:
-            for (int i = -1; i <= 1; ++i)
-                shoot(angle + 0.23f * i, speed * 0.92f, ShotKind::Enemy);
+            fireEnemyFan(muzzle, angle, 1 + extraPairs, 0.23f, speed * 0.92f, ShotKind::Enemy, 4.f);
             break;
         case EnemyKind::Gunship:
         {
-            // Offset alternating fans by half a gap rather than sealing the lanes.
             const float offset = enemy.volleys % 2 ? 0.125f : 0.f;
-            for (int i = -3; i <= 3; ++i)
-                shoot(angle + 0.25f * i + offset, speed * 0.77f, ShotKind::EnemyOrb);
+            fireEnemyFan(muzzle, angle + offset, 3 + extraPairs, 0.25f, speed * 0.77f, ShotKind::EnemyOrb, 5.f);
             break;
         }
         case EnemyKind::PatrolBoat:
         {
-            const float shellSpeed = 190.f + std::min(48.f, elapsed_ * 0.6f);
-            shots_.push_back({ShotKind::EnemyOrb, enemy.turretMuzzle(), enemy.turretDirection() * shellSpeed,
-                              5.f, 0.f, 0.f});
+            const auto direction = enemy.turretDirection();
+            const float shellSpeed = 190.f + 0.6f * opening + 70.f * pressure;
+            fireEnemyFan(enemy.turretMuzzle(), std::atan2(direction.y, direction.x), (stage + 1) / 3, 0.26f,
+                         shellSpeed, ShotKind::EnemyOrb, 5.f);
             break;
         }
         case EnemyKind::BattleshipTurret:
@@ -654,7 +700,7 @@ void Combat::spawnBoat()
 {
     const auto type = stats(EnemyKind::PatrolBoat);
     const float lane = 506.f + 6.f * std::sin(elapsed_);
-    const float speed = type.speed + 15.f * std::sin(elapsed_ * 0.47f);
+    const float speed = (type.speed + 15.f * std::sin(elapsed_ * 0.47f)) * (1.f + 0.7f * flightPressure(elapsed_));
     enemies_.push_back({EnemyKind::PatrolBoat, {width + 36.f, lane}, {-speed, 0.f},
                         type.radius, 0.f, type.health, lane, 0.f, 1.2f, 0, 0.f});
 }
@@ -676,7 +722,7 @@ void Combat::updateBoat(Enemy& boat, float dt, sf::Vector2f playerPosition)
         return;
     if (aim.lengthSquared() >= 125.f * 125.f)
         fireEnemy(boat, playerPosition);
-    boat.fireTimer += type.reload;
+    boat.fireTimer += type.reload / (1.f + 0.56f * flightPressure(elapsed_));
 }
 
 void Combat::updateBattleship(float dt)
@@ -711,7 +757,7 @@ void Combat::updateBattleship(float dt)
         ship.age += dt;
         const float station = 665.f + 65.f * std::sin(0.22f * ship.age);
         const float speed = ship.age < 34.f ? std::clamp((station - ship.position.x) * 0.8f, -85.f, 25.f) : -100.f;
-        ship.position.x += speed * dt;
+        ship.position.x += speed * (1.f + 0.25f * flightPressure(elapsed_)) * dt;
         ship.position.y = 509.f + 1.7f * std::sin(1.8f * ship.age);
         if (ship.position.x > -130.f)
             return;
@@ -745,24 +791,28 @@ void Combat::updateBossTurret(Enemy& turret, float dt, sf::Vector2f playerPositi
 
     const auto muzzle = turret.turretMuzzle();
     const auto direction = turret.turretDirection();
+    const float angle = std::atan2(direction.y, direction.x);
+    const float pressure = flightPressure(elapsed_);
+    const float shellSpeed = 1.f + 0.22f * pressure;
+    const int stage = barrageStage(elapsed_);
     switch (turret.turretKind)
     {
         case TurretKind::Cannon:
-            shots_.push_back({ShotKind::EnemyOrb, muzzle, direction * 178.f, 7.f, 0.f, 0.f});
+            fireEnemyFan(muzzle, angle, stage / 3, 0.28f, 178.f * shellSpeed, ShotKind::EnemyOrb, 7.f);
             break;
         case TurretKind::Flak:
         {
-            const float aim = std::atan2(direction.y, direction.x);
-            for (int i = -2; i <= 2; ++i)
-                shots_.push_back({ShotKind::Enemy, muzzle, velocityAt(aim + 0.24f * i, 147.f), 4.f, 0.f, 0.f});
+            const int extraPairs = (stage + static_cast<int>(turret.volleys % 2)) / 2;
+            fireEnemyFan(muzzle, angle, 2 + extraPairs, 0.24f, 147.f * shellSpeed, ShotKind::Enemy, 4.f);
             break;
         }
         case TurretKind::Burst:
-            shots_.push_back({ShotKind::Enemy, muzzle, direction * 265.f, 3.5f, 0.f, 0.f});
+            fireEnemyFan(muzzle, angle, stage >= 4 ? 1 : 0, 0.20f, 265.f * shellSpeed, ShotKind::Enemy, 3.5f);
             break;
     }
     ++turret.volleys;
-    turret.fireTimer += (turret.turretKind == TurretKind::Burst && turret.volleys % 3 != 0) ? 0.15f : gun.reload;
+    const float reload = gun.reload / (1.f + 0.5f * pressure);
+    turret.fireTimer += (turret.turretKind == TurretKind::Burst && turret.volleys % 3 != 0) ? 0.15f : reload;
 }
 
 void Combat::damageHull(int amount, sf::Vector2f impact, unsigned chainId, bool countedKill)
@@ -900,71 +950,130 @@ void Combat::updateWeapon(float dt, sf::Vector2f muzzle)
     }
     else if (weaponMode_ == WeaponMode::Missiles)
     {
-        const float side = volleysFired_ % 2 ? 1.f : -1.f;
-        shots_.push_back({ShotKind::Missile, muzzle + sf::Vector2f{0.f, side * 4.f},
-                          velocityAt(side * 0.030f, 310.f), 5.f, 0.f, 0.f});
+        fireMissileRack(muzzle);
         const float strength = std::clamp((rate - missileThreshold) / (laserThreshold - missileThreshold), 0.f, 1.f);
-        nextPulse_ += 0.35f - 0.13f * strength;
+        nextPulse_ += rankedReload(0.35f - 0.13f * strength, weaponRank_);
     }
     else if (weaponMode_ == WeaponMode::Laser)
     {
         fireLaser(muzzle);
         const float strength = std::clamp((rate - laserThreshold) / (fullLaserRate - laserThreshold), 0.f, 1.f);
-        nextPulse_ += 0.36f - 0.14f * strength;
+        nextPulse_ += rankedReload(0.36f - 0.14f * strength, weaponRank_);
     }
     else
     {
         fireSalvo(muzzle);
         const float strength = std::clamp((rate - laserThreshold) / (fullArsenalRate - laserThreshold), 0.f, 1.f);
-        nextPulse_ += 0.38f - 0.12f * strength;
+        nextPulse_ += rankedReload(0.38f - 0.12f * strength, weaponRank_);
+    }
+}
+
+void Combat::fireMissileRack(sf::Vector2f muzzle)
+{
+    const unsigned count = 1 + (weaponRank_ + 1) / 2;
+    const float alternatingSide = volleysFired_ % 2 ? 1.f : -1.f;
+    const float opening = 0.030f + 0.027f * weaponRank_;
+    for (unsigned i = 0; i < count; ++i)
+    {
+        const float lane = count == 1 ? alternatingSide : 2.f * i / (count - 1) - 1.f;
+        Shot missile{ShotKind::Missile, muzzle + sf::Vector2f{0.f, lane * (4.f + weaponRank_)},
+                     velocityAt(lane * opening, 310.f), 5.f, 0.f, 0.f};
+        missile.weaponRank = weaponRank_;
+        shots_.push_back(missile);
     }
 }
 
 void Combat::fireLaser(sf::Vector2f muzzle)
 {
-    sf::Vector2f direction{1.f, 0.f};
+    const unsigned rank = weaponRank_;
+    sf::Vector2f aim{1.f, 0.f};
+    float opening = 0.045f + 0.025f * rank;
     if (const auto* target = guidanceTarget())
     {
-        const auto aim = target->position - muzzle;
-        if (aim.lengthSquared() > 0.f)
-            direction = aim.normalized();
-    }
-    float reach = width + height;
-    if (direction.x != 0.f)
-        reach = std::min(reach, ((direction.x > 0.f ? width : 0.f) - muzzle.x) / direction.x);
-    if (direction.y != 0.f)
-        reach = std::min(reach, ((direction.y > 0.f ? height : 0.f) - muzzle.y) / direction.y);
-    if (reach <= 0.f)
-        return;
-    const auto hullContact = battleship_ ? battleship_->hullRayHit(muzzle, direction, reach, LaserPulse::radius)
-                                         : std::nullopt;
-    reach = hullContact.value_or(reach);
-    Enemy* turretHit = nullptr;
-    for (auto& enemy : enemies_)
-    {
-        if (enemy.kind != EnemyKind::BattleshipTurret || enemy.health <= 0)
-            continue;
-        const auto contact = rayCircleHit(muzzle, direction, reach, enemy.position, enemy.radius + LaserPulse::radius);
-        if (contact)
+        const auto offset = target->position - muzzle;
+        if (offset.lengthSquared() > 0.f)
         {
-            reach = *contact;
-            turretHit = &enemy;
+            aim = offset.normalized();
+            // Under guidance even the outer beams sight the marked enemy.
+            opening = std::min(opening, std::atan2(0.8f * target->radius, offset.length()));
         }
     }
-    laserPulse_ = LaserPulse{muzzle, muzzle + direction * reach};
+
+    laserPulses_.clear();
+    std::optional<sf::Vector2f> hullHit;
+    std::array<std::optional<sf::Vector2f>, 3> turretHits{};
+    const auto emitRay = [&](sf::Vector2f direction)
+    {
+        float reach = width + height;
+        if (direction.x != 0.f)
+            reach = std::min(reach, ((direction.x > 0.f ? width : 0.f) - muzzle.x) / direction.x);
+        if (direction.y != 0.f)
+            reach = std::min(reach, ((direction.y > 0.f ? height : 0.f) - muzzle.y) / direction.y);
+        if (reach <= 0.f)
+            return;
+
+        const auto hull = battleship_ ? battleship_->hullRayHit(muzzle, direction, reach, LaserPulse::radius)
+                                      : std::nullopt;
+        reach = hull.value_or(reach);
+        const Enemy* turret = nullptr;
+        for (const auto& enemy : enemies_)
+        {
+            if (enemy.kind != EnemyKind::BattleshipTurret || enemy.health <= 0)
+                continue;
+            if (const auto hit = rayCircleHit(muzzle, direction, reach, enemy.position, enemy.radius + LaserPulse::radius))
+            {
+                reach = *hit;
+                turret = &enemy;
+            }
+        }
+        const auto end = muzzle + direction * reach;
+        laserPulses_.push_back({muzzle, end, 0.f, rank});
+        if (turret)
+            turretHits[static_cast<std::size_t>(turret->turretKind)] = end;
+        else if (hull)
+            hullHit = end;
+    };
+
+    emitRay(aim);
+    const unsigned pairs = (rank + 2) / 3;
+    const float heading = std::atan2(aim.y, aim.x);
+    for (unsigned lane = 1; lane <= pairs; ++lane)
+    {
+        const float angle = opening * lane / pairs;
+        emitRay(velocityAt(heading - angle, 1.f));
+        emitRay(velocityAt(heading + angle, 1.f));
+    }
+
+    // Trace the whole fan first: a ship destroyed by the central ray still blocks the side rays of that burst.
+    const int pulseDamage = 8 + rank / 2;
+    const int healthBefore = bossHealth();
     for (auto& enemy : enemies_)
     {
-        if (enemy.health <= 0 || enemy.kind == EnemyKind::BattleshipTurret ||
-            enemy.position.x < 0.f || enemy.position.x > width)
+        if (enemy.health <= 0)
             continue;
-        const float along = std::clamp((enemy.position - muzzle).dot(direction), 0.f, reach);
-        if (overlaps(muzzle + direction * along, LaserPulse::radius, enemy.position, enemy.radius))
-            damage(enemy, 8);
+        if (enemy.kind == EnemyKind::BattleshipTurret)
+        {
+            if (const auto& hit = turretHits[static_cast<std::size_t>(enemy.turretKind)])
+                damage(enemy, pulseDamage, 0, *hit);
+            continue;
+        }
+        if (enemy.position.x < 0.f || enemy.position.x > width)
+            continue;
+        for (const auto& ray : laserPulses_)
+        {
+            const auto segment = ray.end - ray.origin;
+            const float lengthSquared = segment.lengthSquared();
+            const float t = lengthSquared > 0.f
+                ? std::clamp((enemy.position - ray.origin).dot(segment) / lengthSquared, 0.f, 1.f) : 0.f;
+            if (overlaps(ray.origin + segment * t, LaserPulse::radius, enemy.position, enemy.radius))
+            {
+                damage(enemy, pulseDamage);
+                break;
+            }
+        }
     }
-    if (turretHit)
-        damage(*turretHit, 8, 0, laserPulse_->end);
-    else if (hullContact)
-        damageHull(8, laserPulse_->end);
+    if (hullHit)
+        damageHull(pulseDamage - (healthBefore - bossHealth()), *hullHit);
 }
 
 void Combat::fireVolley(sf::Vector2f muzzle)
@@ -977,17 +1086,21 @@ void Combat::fireVolley(sf::Vector2f muzzle)
 
     // Relative to the starting cannon, count every round in a full burst and reload.
     const float relativeRate = fireRateMultiplier_ * pattern.roundsPerSecond() * singleReload;
-    const float extraRate = relativeRate - 1.f;
+    const float extraRate = relativeRate - 1.f + 0.35f * weaponRank_;
     const float intensity = extraRate / (extraRate + 5.f);
     const float deviation = maxDeviation * intensity;
     const float curveChance = 0.16f + 0.42f * intensity;
     const float curveAcceleration = 60.f + 430.f * intensity;
     std::uniform_real_distribution<float> jitter(-deviation, deviation);
     std::uniform_real_distribution<float> curveRoll(-1.f, 1.f);
-    for (int i = -pattern.spread; i <= pattern.spread; ++i)
+    const int lanes = pattern.spread + static_cast<int>((weaponRank_ + 1) / 2);
+    const float opening = pattern.spread * (level >= 5 ? 0.18f : 0.12f) + 0.04f * weaponRank_;
+    const float stepAngle = lanes > 0 ? opening / lanes : 0.f;
+    for (int i = -lanes; i <= lanes; ++i)
     {
-        const float angle = i * (level >= 5 ? 0.18f : 0.12f) + jitter(weaponRandom_);
+        const float angle = i * stepAngle + jitter(weaponRandom_);
         Shot shot{ShotKind::Player, muzzle, velocityAt(angle, 630.f), 3.f, 0.f, 0.f};
+        shot.weaponRank = weaponRank_;
         shot.trailPower = intensity;
         shot.sparkSeed = static_cast<unsigned>(std::abs(shot.velocity.x) * 1024.f);
         const float roll = curveRoll(weaponRandom_);
@@ -998,25 +1111,35 @@ void Combat::fireVolley(sf::Vector2f muzzle)
 
     if (pattern.waves > 0 && burstRemaining_ == 1)
     {
-        for (float sign : {-1.f, 1.f})
+        const unsigned pairs = 1 + weaponRank_ / 5;
+        for (unsigned lane = 0; lane < pairs; ++lane)
         {
-            const auto velocity = velocityAt(jitter(weaponRandom_), 545.f);
-            const float phase = std::uniform_real_distribution<float>{0.f, 2.f * pi}(weaponRandom_);
-            shots_.push_back({ShotKind::PlayerWave, muzzle, velocity, 3.5f, 0.f, sign, phase, velocity.y});
+            for (float sign : {-1.f, 1.f})
+            {
+                const auto velocity = velocityAt(sign * 0.12f * lane + jitter(weaponRandom_), 545.f);
+                const float phase = std::uniform_real_distribution<float>{0.f, 2.f * pi}(weaponRandom_);
+                Shot shot{ShotKind::PlayerWave, muzzle, velocity, 3.5f, 0.f, sign, phase, velocity.y};
+                shot.weaponRank = weaponRank_;
+                shots_.push_back(shot);
+            }
         }
     }
     --burstRemaining_;
-    nextPulse_ += (burstRemaining_ > 0 ? burstSpacing : pattern.reload) / fireRateMultiplier_;
+    const float reload = burstRemaining_ > 0 ? burstSpacing : pattern.reload;
+    nextPulse_ += rankedReload(reload / fireRateMultiplier_, weaponRank_);
 }
 
 void Combat::fireSalvo(sf::Vector2f muzzle)
 {
-    for (int lane = -3; lane <= 3; ++lane)
+    const int lanes = 3 + static_cast<int>(weaponRank_);
+    const float opening = 1.f + 0.13f * weaponRank_;
+    for (int lane = -lanes; lane <= lanes; ++lane)
     {
-        const float spread = lane / 3.f;
-        Shot shot{ShotKind::Salvo, muzzle + sf::Vector2f{0.f, 3.f * spread},
-                  {690.f, 20.f * spread}, 2.8f, 0.f, 0.f};
-        shot.verticalAcceleration = 270.f * spread;
+        const float spread = static_cast<float>(lane) / lanes;
+        Shot shot{ShotKind::Salvo, muzzle + sf::Vector2f{0.f, (3.f + 0.45f * weaponRank_) * spread},
+                  {690.f, 20.f * opening * spread}, 2.8f, 0.f, 0.f};
+        shot.verticalAcceleration = 270.f * opening * spread;
+        shot.weaponRank = weaponRank_;
         shots_.push_back(shot);
     }
 }
@@ -1075,11 +1198,25 @@ void Combat::updateDrones(float dt, sf::Vector2f playerPosition)
         drone.direction = (target->position - drone.position).normalized();
         if (drone.reload > 0.f)
             continue;
-        shots_.push_back({ShotKind::Drone, drone.muzzle(), drone.direction * 570.f, 2.4f, 0.f, 0.f});
-        shots_.back().droneIndex = i;
-        ++drone.shotsFired;
+        const unsigned count = 1 + (weaponRank_ + 2) / 4;
+        const auto side = drone.direction.perpendicular();
+        const auto muzzle = drone.muzzle();
+        // Each bolt sights a different point inside the claimed target's silhouette.
+        const float aperture = target->radius * (0.45f + 0.04f * weaponRank_);
+        for (unsigned bolt = 0; bolt < count; ++bolt)
+        {
+            const float lane = count == 1 ? 0.f : 2.f * bolt / (count - 1) - 1.f;
+            const auto start = muzzle + side * (lane * (2.f + 0.35f * weaponRank_));
+            const auto offsetToAim = target->position + side * (lane * aperture) - start;
+            const auto direction = offsetToAim.lengthSquared() > 0.f ? offsetToAim.normalized() : drone.direction;
+            Shot shot{ShotKind::Drone, start, direction * 570.f, 2.4f, 0.f, 0.f};
+            shot.droneIndex = i;
+            shot.weaponRank = weaponRank_;
+            shots_.push_back(shot);
+        }
+        drone.shotsFired += count;
         drone.muzzleFlash = 1.f;
-        drone.reload = droneReloads[droneUpgrades_];
+        drone.reload = rankedReload(droneReloads[droneUpgrades_], weaponRank_);
     }
 }
 
@@ -1200,6 +1337,9 @@ void Combat::creditRecoveryKill()
 
 void Combat::creditEnemyKill(int points, unsigned chainId)
 {
+    ++enemiesDestroyed_;
+    if (weaponRank_ < maxWeaponRank && enemiesDestroyed_ == weaponRankKills[weaponRank_])
+        ++weaponRank_;
     score_ += points;
     creditRecoveryKill();
     if (chainId == 0)

@@ -10,11 +10,13 @@ Cada 50 enemigos que derribás recuperás una vida, hasta volver a tres. Tambié
 
 Al recuperar la vida, el avión da un destello dorado al mismo tiempo que aparece **+1 VIDA** debajo del puntaje y suenan tres notas cortas seguidas de un acorde. El brillo se desvanece en menos de medio segundo de vuelo y el cartel sigue visible un poco más. [Escuchá el aviso de vida recuperada](assets/arcade/audio/life-recovered.wav).
 
-![El avión dispara misiles sobre una lancha, recoge un potenciador y cambia al láser. Un pulso guiado alcanza al convoy y desencadena varias explosiones.](docs/media/combate.gif)
+![Cuatro pasadas sobre el puerto muestran el cañón dorado, las salvas de misiles, el abanico de haces láser y el Arsenal con escolta orbital.](docs/media/combate.gif)
 
 ## Del cañón al arsenal
 
-El arma mejora por **tiempo de vuelo** y por los **potenciadores** que recogés. En la cabecera se ve qué arma tenés equipada. Estos son los tiempos de vuelo sin recoger potenciadores.
+El **tiempo de vuelo** y los **potenciadores** que recogés determinan cuándo cambiás de arma. Las **bajas** determinan el rango con el que dispara. En la cabecera, junto al nombre del arma, ves tu rango y cuántas bajas llevás hacia el siguiente. Al cambiar de arma o perder una vida conservás ese rango hasta el final de la partida.
+
+Así es cada arma en rango inicial. Los tiempos son los de una partida sin recoger potenciadores.
 
 | Tiempo en vuelo | Qué sale del cañón |
 | --- | --- |
@@ -26,15 +28,28 @@ El arma mejora por **tiempo de vuelo** y por los **potenciadores** que recogés.
 | Cerca de 99 s | **Láser**. Cada pulso inflige 8 puntos de daño a los enemigos que atraviesa. El acorazado detiene el haz en el punto de impacto. |
 | Cerca de 153 s | **Arsenal**. Siete proyectiles salen juntos por la nariz del avión y se abren de a poco. Un robot orbital cubre otros ángulos con su propio cañón. |
 
-De vez en cuando cruza la pantalla un **potenciador turquesa con dos flechas**. Mientras usás el cañón, cada uno multiplica su cadencia por **1,5**. Cuando esa cadencia llegaría a 30 proyectiles por segundo, el avión equipa misiles automáticamente. Las mejoras adelantan también el paso al láser, después de al menos 12 segundos con misiles. Los misiles y el láser pueden disparar hasta una vez cada **0,22 segundos**.
+De vez en cuando cruza la pantalla un **potenciador turquesa con dos flechas**. Mientras usás el cañón, cada uno multiplica su cadencia por **1,5**. Cuando la cadencia base del cañón con esos potenciadores llegaría a 30 proyectiles por segundo, el avión equipa misiles automáticamente. Las mejoras adelantan también el paso al láser, después de al menos 12 segundos con misiles.
 
-Con el láser equipado, el salto al arsenal tarda entre **22 y 55 segundos de vuelo**, según las mejoras que lleves. El primer robot apunta al enemigo visible más cercano, incluso si viene desde atrás. Los potenciadores que recogés con el Arsenal aceleran la salva frontal hasta una cada **0,26 segundos** y mejoran a los robots.
+Con el láser equipado, el salto al Arsenal tarda entre **22 y 55 segundos de vuelo**, según las mejoras que lleves. El primer robot apunta al enemigo visible más cercano, incluso si viene desde atrás. Los potenciadores que recogés con el Arsenal aceleran la salva frontal y mejoran a los robots.
 
-Debajo de **ARSENAL** podés ver cuánto falta para el segundo robot. Con el **tercer potenciador** aparece un compañero verde que orbita del lado opuesto al celeste. Cada uno apunta a un enemigo distinto. Si queda un solo blanco, el celeste sigue disparando y el verde espera al próximo. El intervalo entre disparos de cada robot baja de **0,42 s** a **0,36**, **0,30** y **0,24 s** con las primeras tres mejoras. Con la **cuarta** los dos disparan cada **0,20 s**.
+Debajo de **ARSENAL** podés ver cuánto falta para el segundo robot. Con el **tercer potenciador** aparece un compañero verde que orbita del lado opuesto al celeste. Cada uno apunta a un enemigo distinto. Si queda un solo blanco, el celeste sigue disparando y el verde espera al próximo. Con las cuatro mejoras, el intervalo base entre descargas de cada robot baja de **0,42 a 0,20 segundos**. El rango por bajas acorta aún más la recarga.
 
 ![El robot celeste y el verde orbitan en lados opuestos y disparan a blancos distintos mientras la salva del avión se abre hacia adelante.](docs/media/arsenal.gif)
 
 Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno vuelo y dejan una estela que se afina y se apaga detrás de ellos. Con más proyectiles por segundo, el ángulo de salida varía más, los arcos son más frecuentes y las estelas brillan más. En la última etapa del cañón también desprenden chispas doradas. Los verdes siguen su propio zigzag.
+
+### Diez rangos por bajas
+
+El primer rango llega con **6 bajas**. Los siguientes se alcanzan a las **18, 36, 64, 100, 150, 220, 320, 460 y 660**. También cuentan las bajas de los robots y las explosiones en cadena. Con las tres vidas llenas seguís sumando para el arma.
+
+| Arma | Qué cambia con el rango |
+| --- | --- |
+| Cañón | Las salvas ganan pares de tiros dorados, más apertura y curvas más pronunciadas. Una vez habilitadas las ondas verdes, pueden salir hasta seis juntas. |
+| Misiles | Los lanzadores pasan de alternar un misil a abrir hasta seis en abanico, cada uno con su propia estela de fuego y humo. |
+| Láser | Al haz central se le suman pares laterales hasta un máximo de nueve. Con **Espacio** el abanico se cierra sobre el blanco marcado. Cada haz se corta donde toca el acorazado. Si varios alcanzan el mismo blanco, recibe un solo impacto por pulso. |
+| Arsenal y robots | La salva frontal pasa de siete a **27 dardos**. Cada robot puede disparar hasta **cuatro tiros** a distintos puntos del enemigo que está siguiendo. |
+
+En R10 el tiempo entre descargas es un **15 % menor** que en R0 con los mismos potenciadores.
 
 ## Controles
 
@@ -60,9 +75,13 @@ Al volver al **100 %**, precisión avisa con **dos campanadas ascendentes** y gu
 
 ## Tráfico sobre el puerto
 
+Las estrellas titilan por detrás de dos capas de nubes que pasan a velocidades distintas. Las sierras y la ciudad quedan en la distancia mientras las grúas del puerto cruzan delante. Una franja de luz dorada se dibuja en el mar bajo el sol. Los reflejos de las grúas ondulan bajo los pilotes y las boyas y la espuma pasan más rápido en primer plano. Todas las capas acompañan la aceleración del vuelo y responden a **Shift** y a la pausa.
+
 ![De izquierda a derecha, tu avión, el explorador rojo de 100 puntos, el interceptor de 200 y el blindado de 500.](docs/media/hangar.png)
 
-El **explorador** apunta a tu posición. El **interceptor** dispara en abanicos de tres. El **blindado** llega escoltado y alterna el ángulo de sus abanicos de siete proyectiles. El hueco por el que pasaste la primera vez cambia de lugar en la siguiente descarga.
+Al comienzo, el **explorador** apunta a tu posición, el **interceptor** abre un abanico de tres y el **blindado** alterna el ángulo de sus siete orbes. A los **40, 90, 160, 260 y 420 segundos de vuelo** se ensanchan los patrones de ataque. En las últimas oleadas un blindado puede soltar **13 orbes** en una descarga. Las lanchas y las tres baterías del acorazado también ganan proyectiles.
+
+Al despegar recorrés **105 m/s** y llega una formación aérea aproximadamente cada tres segundos. A los cinco minutos recorrés unos **260 m/s**, con una formación por segundo fuera de los encuentros con el jefe. Las escuadras tardías traen refuerzos a otra altura y las lanchas cruzan más seguido. Durante el duelo con el acorazado hay más espacio entre formaciones.
 
 Los aviones entran a distintas velocidades. Algunos exploradores cambian de altura con una curva en S. En las formaciones de pinza, un interceptor con escape fucsia corrige su rumbo hacia vos y lo mantiene durante la pasada final. Una señal en el borde anuncia por dónde entra. En pinzas alternas aparece desde la izquierda.
 
@@ -76,9 +95,9 @@ A los **42 segundos de vuelo**, una bocina anuncia al primer jefe. Entra por el 
 
 | Torreta | Cómo reconocer su ataque |
 | --- | --- |
-| Proa, a la izquierda | El cañón pesado fija tu posición y lanza un proyectil grande. Cambiá de altura después del destello. |
-| Centro, sobre el puente | El antiaéreo abre un abanico de cinco disparos. Podés pasar por los huecos o desactivarlo primero apuntando a la torreta más alta. |
-| Popa, a la derecha | La batería rápida lanza tres disparos seguidos hacia el punto que fijó antes de la ráfaga. |
+| Proa, a la izquierda | El cañón pesado fija tu posición y lanza un orbe grande. Más adelante agrega dos laterales. Cambiá de altura después del destello. |
+| Centro, sobre el puente | El antiaéreo arranca con cinco disparos y ensancha su abanico con el tiempo. Podés pasar por los huecos o desactivarlo primero apuntando a la torreta más alta. |
+| Popa, a la derecha | La batería rápida hace tres descargas seguidas hacia el punto que fijó antes de la ráfaga. En encuentros avanzados abre tres tiros por descarga. |
 
 Podés apuntar al casco para hundir el barco o a una torreta para desactivar ese ataque. Cada torreta tiene **40 puntos de vida**, vale **250 puntos** y al recibir daño también baja la integridad del barco. Al llegar a cero, el acorazado se hunde, libera una onda expansiva y suma **1500 puntos**. Si sobrevive, a los 34 segundos de encuentro empieza a retirarse hacia la izquierda. El siguiente llega **55 segundos después** de que el anterior desaparezca.
 

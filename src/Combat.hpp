@@ -86,6 +86,7 @@ struct Shot
     float waveDriftX = 0.f;
     std::vector<TrailSample> trailHistory{};
     unsigned droneIndex = 0;
+    unsigned weaponRank = 0;
 
     bool isFriendly() const { return kind != ShotKind::Enemy && kind != ShotKind::EnemyOrb; }
     bool hasTrail() const { return kind == ShotKind::Player && (verticalAcceleration != 0.f || !trailHistory.empty()); }
@@ -103,6 +104,7 @@ struct LaserPulse
     sf::Vector2f origin;
     sf::Vector2f end;
     float age = 0.f;
+    unsigned weaponRank = 0;
     static constexpr float duration = 0.12f;
     static constexpr float radius = 3.f;
 };
@@ -154,6 +156,7 @@ public:
     static constexpr int killsPerLife = 50;
     static constexpr unsigned secondDroneUpgrade = 3;
     static constexpr unsigned maxDroneUpgrades = 4;
+    static constexpr unsigned maxWeaponRank = 10;
     static constexpr float playerHitRadius = 6.f;
     static constexpr float pickupRadius = 14.f;
     static constexpr float waveBlastRadius = 39.f;
@@ -182,7 +185,7 @@ public:
     const Enemy* bossTurret(TurretKind kind) const;
     int bossHealth() const;
     const std::vector<Shot>& shots() const { return shots_; }
-    const std::optional<LaserPulse>& laserPulse() const { return laserPulse_; }
+    const std::vector<LaserPulse>& laserPulses() const { return laserPulses_; }
     WeaponMode weaponMode() const { return weaponMode_; }
     const std::vector<OrbitalDrone>& drones() const { return drones_; }
     unsigned droneUpgrades() const { return droneUpgrades_; }
@@ -193,6 +196,9 @@ public:
     const std::optional<FireRatePickup>& fireRatePickup() const { return fireRatePickup_; }
     unsigned pickupsCollected() const { return pickupsCollected_; }
     int score() const { return score_; }
+    unsigned enemiesDestroyed() const { return enemiesDestroyed_; }
+    unsigned weaponRank() const { return weaponRank_; }
+    std::optional<unsigned> nextWeaponRankKills() const;
     Combo combo() const { return !gameOver() && elapsed_ < comboUntil_ ? lastCombo_ : Combo{}; }
     int comboMilestone() const { return gameOver() || milestones_.empty() ? 0 : milestones_.front(); }
     unsigned comboMilestoneSerial() const { return comboMilestone() ? finishedMilestones_ + 1 : 0; }
@@ -241,11 +247,13 @@ private:
     void sinkBattleship(unsigned chainId);
     void updateEnemies(float dt, sf::Vector2f playerPosition);
     void fireEnemy(Enemy& enemy, sf::Vector2f playerPosition);
+    void fireEnemyFan(sf::Vector2f muzzle, float angle, int pairs, float spacing, float speed, ShotKind kind, float radius);
     float nextPickupDelay();
     void updatePickup(float dt, sf::Vector2f playerPosition);
     void updateWeapon(float dt, sf::Vector2f muzzle);
     float effectiveFireRate() const;
     void fireLaser(sf::Vector2f muzzle);
+    void fireMissileRack(sf::Vector2f muzzle);
     void fireVolley(sf::Vector2f muzzle);
     void fireSalvo(sf::Vector2f muzzle);
     const Enemy* droneTarget(sf::Vector2f position, const Enemy* claimed) const;
@@ -286,6 +294,8 @@ private:
     unsigned droneUpgrades_ = 0;
     float nextPickup_ = nextPickupDelay();
     int score_ = 0;
+    unsigned enemiesDestroyed_ = 0;
+    unsigned weaponRank_ = 0;
     int lives_ = maxLives;
     int recoveryKills_ = 0;
     std::optional<float> recoveryBlinkPhase_;
@@ -300,7 +310,7 @@ private:
     float nextPulse_ = 0.f;
     float weaponSince_ = 0.f;
     std::vector<OrbitalDrone> drones_;
-    std::optional<LaserPulse> laserPulse_;
+    std::vector<LaserPulse> laserPulses_;
     int burstRemaining_ = 0;
     unsigned formation_ = 0;
     unsigned explosionSerial_ = 0;

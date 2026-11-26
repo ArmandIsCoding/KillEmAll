@@ -134,23 +134,80 @@ namespace
 		}
 	}
 
-	void water(Batch& batch, float time)
+	constexpr float coastWidth = 1536.f;
+	constexpr float coastMargin = Combat::gunshipShakeAmplitude + 1.f;
+	constexpr float skyTravel = 0.014f;
+	constexpr float harbourTravel = 0.44f;
+
+	// All panoramas tile across the atlas and extend past the sides of the shaken view.
+	void coastStrip(Batch& batch, float top, float bottom, float atlasTop, float atlasBottom, float scroll)
+	{
+		const float left = -coastMargin, right = sceneWidth + coastMargin;
+		const float u = std::floor(wrap(scroll, coastWidth));
+		quad(batch, { { left, top }, Color::White, { u + left, atlasTop } },
+			{ { right, top }, Color::White, { u + right, atlasTop } },
+			{ { right, bottom }, Color::White, { u + right, atlasBottom } },
+			{ { left, bottom }, Color::White, { u + left, atlasBottom } });
+	}
+
+	void eveningStars(Batch& batch, float time, float distance)
+	{
+		unsigned seed = 3718;
+		for (int i = 0; i < 153; ++i)
+		{
+			const float x = wrap(sample(seed) * coastWidth - distance * 0.009f + 4.f, coastWidth) - 4.f;
+			const float y = 3.f + 192.f * sample(seed);
+			const float phase = sample(seed) * tau;
+			if (x < -coastMargin || x > sceneWidth + coastMargin) continue;
+			const float pulse = 0.57f + 0.43f * std::sin(time * 1.25f + phase);
+			const float opacity = (0.32f + 0.55f * pulse) * (1.f - y / 255.f);
+			const Color light = i % 4 ? Color{ 190, 222, 224 } : Color{ 255, 214, 169 };
+			rectangle(batch, x, y, 1.f, 1.f, faded(light, opacity));
+			if (i % 19 == 0)
+			{
+				rectangle(batch, x - 2.f, y, 5.f, 1.f, faded(light, opacity * 0.58f));
+				rectangle(batch, x, y - 2.f, 1.f, 5.f, faded(light, opacity * 0.61f));
+			}
+		}
+	}
+
+	void sunsetReflection(Batch& batch, float time, float distance)
+	{
+		unsigned seed = 9213;
+		const float sun = 708.f - distance * skyTravel;
+		for (int i = 0; i < 135; ++i)
+		{
+			const float depth = sample(seed);
+			const float drift = (sample(seed) + sample(seed) - 1.f) * (24.f + 152.f * depth);
+			const float phase = sample(seed) * tau;
+			const float wave = 0.5f + 0.5f * std::sin(time * (1.3f + depth) + phase);
+			const float x = wrap(sun + drift + 5.f * std::sin(phase + time) + 64.f, coastWidth) - 64.f;
+			const float y = 425.f + depth * 114.f;
+			rectangle(batch, x, y, (2.f + depth * 20.f) * (0.28f + wave), 1.f,
+				faded({ 255, 197, 132 }, (0.14f + 0.55f * wave) * (1.f - 0.42f * depth)));
+		}
+	}
+
+	void water(Batch& batch, float time, float distance)
 	{
 		// A closer band of moving glints and navigation buoys tracks faster than the coast.
-		for (unsigned i = 0; i < 24; ++i)
+		for (unsigned i = 0; i < 68; ++i)
 		{
-			const float depth = static_cast<float>((i * 37) % 31) / 30.f;
-			const float x = wrap(static_cast<float>(i * 367) - time * (42.f + 38.f * depth),
+			const float depth = static_cast<float>((i * 37) % 67) / 66.f;
+			const float x = wrap(static_cast<float>(i * 367) - distance * (0.32f + 0.60f * depth),
 				sceneWidth + 30.f) - 15.f;
-			const float y = 504.f + depth * 34.f;
+			const float y = 435.f + depth * 104.f;
 			const float twinkle = 0.5f + 0.5f * std::sin(1.6f * time + i * 2.3f);
-			rectangle(batch, x, y, 3.f + 10.f * depth * twinkle, 1.f,
-				faded({ 137, 224, 215 }, 0.15f + 0.27f * twinkle));
+			const float width = 2.f + depth * (4.f + 15.f * twinkle);
+			rectangle(batch, x, y, width, 1.f, faded({ 151, 212, 204 }, 0.14f + 0.49f * twinkle));
+			if (depth > 0.59f && twinkle > 0.65f)
+				rectangle(batch, x + width, y + 1.f, width * 0.43f, 1.f,
+					faded({ 139, 196, 191 }, 0.33f * twinkle));
 		}
 
 		for (int i = 0; i < 2; ++i)
 		{
-			const float x = wrap(190.f + i * 585.f - time * 85.f, 1170.f) - 14.f;
+			const float x = wrap(190.f + i * 585.f - distance * 0.78f, 1170.f) - 14.f;
 			const float y = 526.f + std::round(std::sin(time * 2.5f + i * 3.f));
 			rectangle(batch, x - 8.f, y + 1.f, 16.f, 2.f, { 55, 126, 138 });
 			rectangle(batch, x - 5.f, y - 2.f, 10.f, 3.f, { 28, 49, 71 });
@@ -161,7 +218,7 @@ namespace
 				beacon ? Color{ 255, 229, 151 } : Color{ 178, 103, 90 });
 		}
 
-		const float pier = std::round(wrap(1410.f - time * 145.f, 1960.f) - 165.f);
+		const float pier = std::round(wrap(1410.f - distance * 1.12f, 1960.f) - 165.f);
 		if (pier < sceneWidth && pier + 158.f >= 0.f)
 		{
 			const Color timber{ 28, 42, 46 };
@@ -642,18 +699,30 @@ namespace
 		}
 	}
 
+	void exhaust(Batch& batch, Vec head, Vec direction, float length, float width, Color tint)
+	{
+		const Vec tail = head - direction * length;
+		const Vec edge = direction.perpendicular() * width;
+		quad(batch, {head + edge, tint}, {head - edge, tint},
+		     {tail - edge * 0.15f, faded(tint, 0.f)}, {tail + edge * 0.15f, faded(tint, 0.f)});
+	}
+
 	void projectile(Batch& batch, const Shot& shot)
 	{
 		const Vec p = shot.position;
 		const float r = shot.radius;
 		const bool friendly = shot.isFriendly();
+		const float power = static_cast<float>(shot.weaponRank) / Combat::maxWeaponRank;
+		const float wake = power * std::min(1.f, shot.age * 12.f);
 		const Vec direction = shot.velocity != Vec{} ? shot.velocity.normalized() : Vec{ 1.f, 0.f };
 
 		if (shot.kind == ShotKind::Salvo)
 		{
-			const Vec tail = p - direction * 8.f;
-			const Vec wing = direction.perpendicular() * 2.8f;
+			const Vec tail = p - direction * (8.f + 4.f * power);
+			const Vec wing = direction.perpendicular() * (2.8f + 1.4f * power);
 			const Vec tip = p + direction * 6.f;
+			if (wake > 0.f)
+				exhaust(batch, tail, direction, 32.f * wake, 1.5f + power, {255, 145, 49, 180});
 			batch.insert(batch.end(), { {tail + wing, {228, 124, 56}}, {tip, {255, 248, 192}},
 				{tail - wing, {160, 75, 44}} });
 			bolt(batch, tail - direction * 4.f, tip, direction, 1.6f, { 255, 207, 99 });
@@ -664,7 +733,9 @@ namespace
 		if (shot.kind == ShotKind::Drone)
 		{
 			const auto& colors = droneColors[shot.droneIndex];
-			const Vec tail = p - direction * 7.f;
+			const Vec tail = p - direction * (7.f + 4.f * power);
+			if (wake > 0.f)
+				exhaust(batch, tail, direction, 20.f * wake, 2.f, faded(colors.light, 0.72f));
 			bolt(batch, tail, p + direction * 2.f, direction, 2.4f, colors.shadow);
 			bolt(batch, tail + direction, p + direction * 2.f, direction, 1.65f, colors.light);
 			streak(batch, p - direction * 3.f, p, direction, 0.85f, { 231, 255, 241 });
@@ -675,14 +746,14 @@ namespace
 		{
 			const Vec side = direction.perpendicular();
 			const Vec tail = p - direction * 11.f;
-			const float flameLength = 8.f + 3.f * std::cos(51.f * shot.age);
+			const float flameLength = 8.f + 3.f * std::cos(51.f * shot.age) + 13.f * wake;
 			for (int i = 4; i > 0; --i)
 			{
 				const float lookback = i * 0.035f;
 				if (lookback > shot.age)
 					continue;
 				const auto past = shot.trailSample(lookback);
-				puff(batch, past.position - past.velocity.normalized() * 12.f, 2.f + i * 0.65f,
+				puff(batch, past.position - past.velocity.normalized() * 12.f, 2.f + i * (0.65f + 0.26f * power),
 				     faded({173, 189, 184}, 0.58f - 0.08f * i));
 			}
 			batch.insert(batch.end(), {
@@ -691,6 +762,8 @@ namespace
 				{p + direction * 2.f, {105, 140, 144}}, {tail + side * 7.f, {222, 97, 55}},
 				{tail - side * 7.f, {157, 66, 48}}
 			});
+			if (wake > 0.f)
+				exhaust(batch, tail, direction, flameLength * 0.75f, 2.3f, {255, 251, 185});
 			bolt(batch, tail, p + direction * 10.f, direction, 4.f, {30, 49, 59});
 			bolt(batch, tail + direction * 2.f, p + direction * 9.f, direction, 2.8f, {200, 223, 206});
 			streak(batch, p + direction, p + direction * 4.f, direction, 2.8f, {241, 111, 59});
@@ -708,13 +781,15 @@ namespace
 		}
 
 		const bool wave = shot.kind == ShotKind::PlayerWave;
-		const float length = wave ? 22.f : friendly ? 17.f : 8.f;
+		const float length = (wave ? 22.f : friendly ? 17.f : 8.f) + 6.f * power;
 		const Vec tail = p - direction * length;
 		const Vec head = p + direction * (friendly ? 4.f : 2.f);
 		const Color shadow = friendly ? Color{ 24, 81, 82 } : Color{ 70, 17, 61 };
 		const Color rim = friendly ? (wave ? Color{ 73, 244, 204 } : Color{ 255, 183, 44 })
 			: Color{ 255, 53, 111 };
 		const Color core = friendly ? Color{ 255, 255, 206 } : Color{ 255, 220, 219 };
+		if (wake > 0.f)
+			exhaust(batch, tail, direction, 26.f * wake, r * 0.8f, faded(rim, 0.66f));
 		bolt(batch, tail, head, direction, r + 1.f, shadow);
 		bolt(batch, tail + direction * 2.f, head - direction, direction, r, rim);
 		bolt(batch, p - direction * (length * 0.52f), head - direction, direction, r * 0.48f, core);
@@ -727,9 +802,24 @@ namespace
 			return;
 		const Vec direction = segment.normalized();
 		const float glow = 1.f - pulse.age / LaserPulse::duration;
-		streak(batch, pulse.origin, pulse.end, direction, 5.f + glow * 2.f, faded({63, 142, 255}, 0.33f * glow));
+		const float power = static_cast<float>(pulse.weaponRank) / Combat::maxWeaponRank;
+		streak(batch, pulse.origin, pulse.end, direction, 5.f + glow * (2.f + 3.f * power),
+		       faded({63, 142, 255}, (0.33f + power * 0.2f) * glow));
 		streak(batch, pulse.origin, pulse.end, direction, LaserPulse::radius, faded({92, 222, 255}, glow));
 		streak(batch, pulse.origin, pulse.end, direction, 1.3f, faded({245, 255, 254}, glow));
+		if (pulse.weaponRank > 0)
+		{
+			const float reach = segment.length();
+			const Vec rim = direction.perpendicular() * (3.f + 2.5f * power) * glow;
+			const float spacing = 88.f - 28.f * power;
+			for (float d = std::fmod(pulse.age * 490.f, spacing); d < reach; d += spacing)
+			{
+				const Vec a = pulse.origin + direction * d;
+				const Vec b = pulse.origin + direction * std::min(reach, d + 8.f + 17.f * power);
+				streak(batch, a + rim, b + rim, direction, 0.9f, faded({157, 186, 255}, glow));
+				streak(batch, a - rim, b - rim, direction, 0.9f, faded({152, 250, 255}, glow));
+			}
+		}
 		puff(batch, pulse.origin, 2.f + glow * 3.f, faded({205, 255, 255}, glow));
 	}
 
@@ -865,32 +955,63 @@ namespace
 }
 
 BattleRenderer::BattleRenderer(const std::filesystem::path& arcadeDirectory)
-	: coast(arcadeDirectory / "coast.png"), enemyAtlas(arcadeDirectory / "enemies.png"),
+	: coastLayers(arcadeDirectory / "coast-parallax.png"), enemyAtlas(arcadeDirectory / "enemies.png"),
 	burstAtlas(arcadeDirectory / "burst.png"), battleshipHull(arcadeDirectory / "battleship-hull.png"),
 	battleshipFlashMask(whiteSilhouette(battleshipHull)), droneHull(arcadeDirectory / "orbital-drone.png")
 {
-	coast.setRepeated(true);
+	coastLayers.setRepeated(true);
 }
 
 void BattleRenderer::drawBackground(sf::RenderTarget& target, const Combat& combat)
 {
 	const float elapsedSeconds = combat.elapsed();
-	const float scroll = std::floor(wrap(elapsedSeconds * 24.f, sceneWidth));
-	constexpr float margin = Combat::gunshipShakeAmplitude + 1.f;
-	const float bottom = static_cast<float>(coast.getSize().y);
-	std::array<sf::Vertex, 8> landscape;
-	const auto row = [&](std::size_t first, float y, float textureY) {
-		landscape[first] = { { -margin, y }, Color::White, { scroll - margin, textureY } };
-		landscape[first + 1] = { { sceneWidth + margin, y }, Color::White, { scroll + sceneWidth + margin, textureY } };
-	};
-	// Extend the sky and water edge texels vertically while horizontal scrolling wraps.
-	row(0, -margin, 0.5f);
-	row(2, 0.5f, 0.5f);
-	row(4, bottom - 0.5f, bottom - 0.5f);
-	row(6, bottom + margin, bottom - 0.5f);
-	target.draw(landscape.data(), landscape.size(), sf::PrimitiveType::TriangleStrip, &coast);
+	const float distance = combat.distance();
+	const sf::RenderStates panorama(&coastLayers);
+
+	textured.clear();
+	coastStrip(textured, -coastMargin, 0.f, 0.5f, 0.5f, distance * skyTravel);
+	coastStrip(textured, 0.f, 427.f, 0.f, 427.f, distance * skyTravel);
+	drawBatch(target, textured, panorama);
 	geometry.clear();
-	water(geometry, elapsedSeconds);
+	eveningStars(geometry, elapsedSeconds, distance);
+	drawBatch(target, geometry);
+
+	textured.clear();
+	coastStrip(textured, 8.f, 213.f, 428.f, 633.f, distance * 0.050f);    // high cirrus
+	coastStrip(textured, 0.f, 333.f, 635.f, 968.f, distance * 0.107f);    // cumulus banks
+	coastStrip(textured, 314.f, 427.f, 970.f, 1083.f, distance * 0.155f); // distant ridge
+	coastStrip(textured, 331.f, 427.f, 1085.f, 1181.f, distance * 0.26f); // coastal town
+	// Each depth band moves together so individual waves retain their shape over long runs.
+	for (int y = 425; y < 540; y += 3)
+	{
+		const float top = static_cast<float>(y);
+		const float bottom = std::min(top + 3.f, 540.f);
+		const float travel = y < 449 ? 0.25f : y < 485 ? 0.48f : 0.78f;
+		const float ripple = (0.6f + (top - 425.f) * 0.014f) * std::sin(elapsedSeconds * 1.7f + top * 0.19f);
+		coastStrip(textured, top, bottom, 1182.f + top - 425.f, 1182.f + bottom - 425.f,
+			distance * travel + ripple);
+	}
+	// Mirror the last few wave rows into the overscan so shaking also exposes textured water.
+	coastStrip(textured, 540.f, 540.f + coastMargin, 1297.f, 1297.f - coastMargin, distance * 0.78f);
+	drawBatch(target, textured, panorama);
+
+	geometry.clear();
+	sunsetReflection(geometry, elapsedSeconds, distance);
+	drawBatch(target, geometry);
+
+	textured.clear();
+	const float harbourOffset = distance * harbourTravel;
+	coastStrip(textured, 228.f, 444.f, 1300.f, 1516.f, harbourOffset);
+	for (int y = 444; y < 534; y += 5)
+	{
+		const float top = static_cast<float>(y);
+		const float ripple = (top - 444.f) * 0.045f * std::sin(elapsedSeconds * 2.f + top * 0.28f);
+		coastStrip(textured, top, top + 5.f, 1516.f + top - 444.f, 1521.f + top - 444.f,
+			harbourOffset + ripple);
+	}
+	drawBatch(target, textured, panorama);
+	geometry.clear();
+	water(geometry, elapsedSeconds, distance);
 	for (const auto& enemy : combat.enemies())
 		if (enemy.flight == FlightPath::Pursuit || enemy.flight == FlightPath::Breakaway)
 			hunterSignal(geometry, enemy);
@@ -959,8 +1080,8 @@ void BattleRenderer::drawEffects(sf::RenderTarget& target, const Combat& combat)
 	for (const Shot& shot : combat.shots())
 		if (shot.isFriendly())
 			projectile(foreground, shot);
-	if (const auto& laser = combat.laserPulse())
-		laserFlash(foreground, *laser);
+	for (const auto& ray : combat.laserPulses())
+		laserFlash(foreground, ray);
 	if (const auto& pickup = combat.fireRatePickup())
 		fireRateBadge(foreground, *pickup);
 	if (const auto* enemy = combat.guidanceTarget())

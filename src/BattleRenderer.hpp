@@ -19,7 +19,7 @@ public:
     void drawEffects(sf::RenderTarget& target, const Combat& combat);
 
 private:
-    sf::Texture coast;
+    sf::Texture coastLayers;
     sf::Texture enemyAtlas;
     sf::Texture burstAtlas;
     sf::Texture battleshipHull;

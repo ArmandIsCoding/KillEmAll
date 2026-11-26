@@ -289,6 +289,9 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
         weaponColor = {147, 213, 255};
     }
     label(target, font, weaponName, 295, 8, 12, weaponColor);
+    const std::string rank = "R" + std::to_string(combat.weaponRank());
+    rect(target, 390, 6, 33, 15, powerNotice ? weaponColor : steel);
+    label(target, font, rank, 406.f - 4.5f * static_cast<float>(rank.size()), 9, 9, powerNotice ? ink : ivory);
     if (mode == WeaponMode::Arsenal)
     {
         const unsigned upgrades = combat.droneUpgrades();
@@ -310,13 +313,18 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
             rect(target, x + 2, active ? 31.f : 27.f, 16, active ? 1.f : 5.f, active ? steel : ink);
         }
     }
-    if (powerNotice)
-        label(target, font, "ARMA MEJORADA", 295, 40, 8, ivory);
-    else if (pickupNotice && mode == WeaponMode::Arsenal)
+    if (pickupNotice && mode == WeaponMode::Arsenal)
         label(target, font, combat.droneUpgrades() == Combat::secondDroneUpgrade ? "+1 ROBOT" : "MAYOR CADENCIA",
               295, 40, 8, gold);
+    else if (powerNotice)
+        label(target, font, "ARMA MEJORADA", 295, 40, 8, ivory);
     else if (pickupNotice)
         label(target, font, mode == WeaponMode::Cannon ? "CADENCIA +50%" : "POTENCIADOR", 295, 40, 8, cyan);
+    else if (const auto next = combat.nextWeaponRankKills())
+        label(target, font, std::to_string(combat.enemiesDestroyed()) + "/" + std::to_string(*next) + " BAJAS",
+              295, 40, 8, dim);
+    else
+        label(target, font, U"RANGO M\u00c1XIMO", 295, 40, 8, gold);
 
     const auto refillFlash = [flying](float age) {
         return flying ? std::clamp((0.30f - age) / 0.24f, 0.f, 1.f) : 0.f;

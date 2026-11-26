@@ -112,6 +112,7 @@ void Game::update(float dt)
     if (paused)
         return;
     const int oldPower = combat.power();
+    const auto oldRank = combat.weaponRank();
     const WeaponMode oldWeapon = combat.weaponMode();
     const auto oldPickups = combat.pickupsCollected();
     const auto oldVolley = combat.volleysFired();
@@ -128,7 +129,8 @@ void Game::update(float dt)
         dt -= realSlice;
     }
     bestScore = std::max(bestScore, combat.score());
-    const bool leveledUp = combat.power() > oldPower || combat.weaponMode() != oldWeapon;
+    const bool leveledUp = combat.power() > oldPower || combat.weaponMode() != oldWeapon ||
+                           combat.weaponRank() > oldRank;
     const bool pickedUp = combat.pickupsCollected() > oldPickups;
     powerNotice = leveledUp ? 1.6f : std::max(0.f, powerNotice - worldDt);
     pickupNotice = pickedUp ? 1.6f : std::max(0.f, pickupNotice - worldDt);
@@ -150,7 +152,7 @@ void Game::drawPlayer()
     if (muzzleFlash > 0.f && combat.weaponMode() != WeaponMode::Laser)
     {
         const auto tip = position + player.muzzleOffset();
-        const float length = 8.f + 8.f * muzzleFlash / 0.055f;
+        const float length = 8.f + (8.f + 0.9f * combat.weaponRank()) * muzzleFlash / 0.055f;
         const sf::Vertex flash[]{
             {tip + sf::Vector2f{-2.f, -3.f}, {255, 176, 61}}, {tip + sf::Vector2f{length, 0.f}, {255, 247, 178}},
             {tip + sf::Vector2f{-2.f, 3.f}, {255, 176, 61}}
