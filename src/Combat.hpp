@@ -175,6 +175,9 @@ public:
     int bestCombo() const { return bestCombo_; }
     int lives() const { return lives_; }
     int recoveryKills() const { return recoveryKills_; }
+    std::optional<float> recoveryBlinkPhase() const { return recoveryBlinkPhase_; }
+    bool oneKillFromLife() const { return recoveryKills_ == killsPerLife - 1; }
+    unsigned lifeRecoveryWarnings() const { return lifeRecoveryWarnings_; }
     unsigned lifeRecoveries() const { return lifeRecoveries_; }
     float lifeRecoveryFlash() const;
     float lifeRecoveryGlow() const;
@@ -224,6 +227,7 @@ private:
     void sweepGunshipShockwaves();
     void hitEnemies(Shot& shot);
     void damage(Enemy& enemy, int amount, unsigned chainId = 0);
+    void creditRecoveryKill();
     void hitPlayer(sf::Vector2f position);
     void explodeEnemy(const Enemy& enemy, unsigned chainId = 0);
     void explode(sf::Vector2f position, ExplosionKind kind, unsigned chainId = 0);
@@ -253,6 +257,8 @@ private:
     int score_ = 0;
     int lives_ = maxLives;
     int recoveryKills_ = 0;
+    std::optional<float> recoveryBlinkPhase_;
+    unsigned lifeRecoveryWarnings_ = 0;
     unsigned lifeRecoveries_ = 0;
     float lastLifeRecoveryTime_ = -std::numeric_limits<float>::infinity();
     float elapsed_ = 0.f;

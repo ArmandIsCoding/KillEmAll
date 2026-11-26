@@ -253,10 +253,10 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     {
         const auto count = std::to_string(combat.recoveryKills()) + "/" + std::to_string(Combat::killsPerLife);
         sf::Color countColor = cyan;
-        if (Combat::killsPerLife - combat.recoveryKills() <= 5)
+        if (const auto phase = combat.recoveryBlinkPhase())
         {
             countColor = gold;
-            if (std::fmod(combat.elapsed(), 0.6f) < 0.3f)
+            if (*phase < 0.5f)
             {
                 rect(target, 178, 41, 96, 13, gold);
                 countColor = ink;

@@ -12,6 +12,8 @@ constexpr float pi = 3.14159265f;
 constexpr float milestoneDuration = 1.4f;
 constexpr float lifeNoticeDuration = 1.6f;
 constexpr float lifeGlowDuration = 0.42f;
+// A full blink cycle in world seconds, indexed by the number of kills still needed minus one.
+constexpr std::array<float, 5> recoveryBlinkPeriods{0.36f, 0.48f, 0.60f, 0.72f, 0.84f};
 constexpr float missileThreshold = 30.f;
 constexpr float laserThreshold = 65.f;
 constexpr float fullLaserRate = 130.f;
@@ -398,6 +400,11 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
 void Combat::step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffset)
 {
     elapsed_ += dt;
+    if (recoveryBlinkPhase_)
+    {
+        const float period = recoveryBlinkPeriods[killsPerLife - recoveryKills_ - 1];
+        *recoveryBlinkPhase_ = std::fmod(*recoveryBlinkPhase_ + dt / period, 1.f);
+    }
     distance_ += dt * (105.f + std::min(55.f, elapsed_ * 0.5f));
     grace_ = std::max(0.f, grace_ - dt);
     updateBattleship(dt);
@@ -922,6 +929,7 @@ void Combat::hitPlayer(sf::Vector2f position)
     if (gameOver())
     {
         recoveryKills_ = 0;
+        recoveryBlinkPhase_.reset();
         lastLifeRecoveryTime_ = -std::numeric_limits<float>::infinity();
     }
     grace_ = 2.f;
@@ -938,6 +946,26 @@ float Combat::lifeRecoveryGlow() const
     return std::max(0.f, 1.f - (elapsed_ - lastLifeRecoveryTime_) / lifeGlowDuration);
 }
 
+void Combat::creditRecoveryKill()
+{
+    if (lives_ == maxLives || gameOver())
+        return;
+    ++recoveryKills_;
+    const int remaining = killsPerLife - recoveryKills_;
+    if (remaining == static_cast<int>(recoveryBlinkPeriods.size()))
+        recoveryBlinkPhase_ = 0.f;
+    else if (oneKillFromLife())
+        ++lifeRecoveryWarnings_;
+    else if (remaining == 0)
+    {
+        ++lives_;
+        ++lifeRecoveries_;
+        recoveryKills_ = 0;
+        recoveryBlinkPhase_.reset();
+        lastLifeRecoveryTime_ = elapsed_;
+    }
+}
+
 void Combat::damage(Enemy& enemy, int amount, unsigned chainId)
 {
     if (enemy.health <= 0)
@@ -947,17 +975,7 @@ void Combat::damage(Enemy& enemy, int amount, unsigned chainId)
     if (enemy.health == 0)
     {
         score_ += stats(enemy.kind).points;
-        if (lives_ < maxLives && !gameOver())
-        {
-            ++recoveryKills_;
-            if (recoveryKills_ == killsPerLife)
-            {
-                ++lives_;
-                ++lifeRecoveries_;
-                recoveryKills_ = 0;
-                lastLifeRecoveryTime_ = elapsed_;
-            }
-        }
+        creditRecoveryKill();
         if (chainId != 0)
         {
             auto& tally = chains_.at(chainId).tally;

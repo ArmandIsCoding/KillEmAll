@@ -4,7 +4,9 @@ Un *bullet hell* de desplazamiento horizontal hecho en **C++17 y SFML 3.1**. Ten
 
 [Compilar y jugar en Windows](#compilar-en-visual-studio) · [Controles](#controles)
 
-Cuando perdés una vida, aparece **BAJAS 0/50** debajo de los aviones en **VIDAS**. Al llegar a **45/50**, el contador empieza a parpadear en dorado. Cada 50 enemigos que derribás recuperás una vida, hasta volver a tres. También cuentan las bajas por explosiones en cadena y cada torreta del acorazado que destruís. Si recibís otro impacto mientras seguís en juego, conservás el progreso.
+Cuando perdés una vida, aparece **BAJAS 0/50** debajo de los aviones en **VIDAS**. Al llegar a **45/50**, el contador empieza a parpadear en dorado y se acelera con cada baja. En **49/50** suena una vez un pitido descendente. [Escuchá el aviso de última baja](assets/arcade/audio/life-warning.wav).
+
+Cada 50 enemigos que derribás recuperás una vida, hasta volver a tres. También cuentan las bajas por explosiones en cadena y cada torreta del acorazado que destruís. Si recibís otro impacto mientras seguís en juego, conservás el progreso.
 
 Al recuperar la vida, el avión da un destello dorado al mismo tiempo que aparece **+1 VIDA** debajo del puntaje y suenan tres notas cortas seguidas de un acorde. El brillo se desvanece en menos de medio segundo de vuelo y el cartel sigue visible un poco más. [Escuchá el aviso de vida recuperada](assets/arcade/audio/life-recovered.wav).
 
