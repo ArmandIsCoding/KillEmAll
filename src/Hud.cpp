@@ -74,6 +74,15 @@ void bossMeter(sf::RenderTarget& target, const sf::Font& font, const Combat& com
     label(target, font, value, 687.f - 10.f * static_cast<float>(value.size()), 71, 10, ivory);
 }
 
+void lifeRecoveryNotice(sf::RenderTarget& target, const sf::Font& font, float flash)
+{
+    const sf::Color accent = flash > 0.8f ? ivory : cyan;
+    rect(target, 16, 63, 240, 44, {15, 35, 39, 245});
+    rect(target, 16, 63, 4, 44, accent);
+    label(target, font, "+1 VIDA", 28, 73, 32, ink);
+    label(target, font, "+1 VIDA", 26, 71, 32, accent);
+}
+
 void comboNotice(sf::RenderTarget& target, const sf::Font& font, Combo combo, float top)
 {
     struct Tier { unsigned size; sf::Color color; };
@@ -215,13 +224,17 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     label(target, font, "PUNTOS", 16, 9, 9, dim);
     const auto score = scoreNumber(combat.score());
     label(target, font, score, 16, 25, std::min(21u, 144u / static_cast<unsigned>(score.size())), gold);
+    const bool flying = !paused && !combat.gameOver();
     const bool bossVisible = combat.battleship().has_value() && !combat.gameOver();
     if (bossVisible)
         bossMeter(target, font, combat);
     const float noticeTop = bossVisible ? 91.f : 60.f;
+    const float lifeFlash = flying ? combat.lifeRecoveryFlash() : 0.f;
+    if (lifeFlash > 0.f)
+        lifeRecoveryNotice(target, font, lifeFlash);
     const auto combo = combat.combo();
     if (combo.kills >= 2 && !paused)
-        comboNotice(target, font, combo, noticeTop);
+        comboNotice(target, font, combo, lifeFlash > 0.f ? 111.f : noticeTop);
     const int milestone = combat.comboMilestone();
     if (milestone > 0 && !paused && !combat.gameOver())
         milestoneNotice(target, font, milestone, noticeTop);
@@ -236,16 +249,10 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
         plane.setColor(i < combat.lives() ? sf::Color::White : sf::Color{108, 137, 145, 135});
         target.draw(plane);
     }
-    if (!combat.gameOver())
+    if (!combat.gameOver() && combat.lives() < Combat::maxLives)
     {
-        const float flash = combat.lifeRecoveryFlash();
-        if (flash > 0.f)
-            label(target, font, "+1 VIDA", 181, 43, 9, flash > 0.8f ? ivory : cyan);
-        else if (combat.lives() < Combat::maxLives)
-        {
-            const auto count = std::to_string(combat.recoveryKills()) + "/" + std::to_string(Combat::killsPerLife);
-            label(target, font, "BAJAS " + count, 181, 44, 8, cyan);
-        }
+        const auto count = std::to_string(combat.recoveryKills()) + "/" + std::to_string(Combat::killsPerLife);
+        label(target, font, "BAJAS " + count, 181, 44, 8, cyan);
     }
 
     const WeaponMode mode = combat.weaponMode();
@@ -274,7 +281,6 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     else if (pickupNotice)
         label(target, font, mode == WeaponMode::Cannon ? "CADENCIA +50%" : "POTENCIADOR", 295, 40, 8, cyan);
 
-    const bool flying = !paused && !combat.gameOver();
     const auto refillFlash = [flying](float age) {
         return flying ? std::clamp((0.30f - age) / 0.24f, 0.f, 1.f) : 0.f;
     };

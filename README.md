@@ -6,6 +6,8 @@ Un *bullet hell* de desplazamiento horizontal hecho en **C++17 y SFML 3.1**. Ten
 
 Cuando perdés una vida, aparece **BAJAS 0/50** debajo de los aviones en **VIDAS**. Cada 50 enemigos que derribás recuperás una vida, hasta volver a tres. También cuentan las bajas por explosiones en cadena y cada torreta del acorazado que destruís. Si recibís otro impacto mientras seguís en juego, conservás el progreso.
 
+Al recuperar la vida, aparece **+1 VIDA** en grande debajo del puntaje y suenan tres notas cortas seguidas de un acorde. [Escuchá el aviso de vida recuperada](assets/arcade/audio/life-recovered.wav).
+
 ![El avión dispara misiles sobre una lancha, recoge un potenciador y cambia al láser. Un pulso guiado alcanza al convoy y desencadena varias explosiones.](docs/media/combate.gif)
 
 ## Del cañón al láser

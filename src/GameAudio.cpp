@@ -10,10 +10,11 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
       powerData(folder / "power.wav"), comboData(folder / "combo-note.wav"),
       fanfareFiveData(folder / "combo-five.wav"), fanfareTenData(folder / "combo-ten.wav"),
       precisionReadyData(folder / "precision-ready.wav"), guidanceReadyData(folder / "guidance-ready.wav"),
-      shipHornData(folder / "ship-horn.wav"),
+      shipHornData(folder / "ship-horn.wav"), lifeRecoveredData(folder / "life-recovered.wav"),
       music(musicData), weapon(cannonData), blast(blastData), wave(blastData),
       impact(impactData), upgrade(powerData), comboNote(comboData), fanfare(fanfareFiveData),
-      precisionReady(precisionReadyData), guidanceReady(guidanceReadyData), shipHorn(shipHornData)
+      precisionReady(precisionReadyData), guidanceReady(guidanceReadyData), shipHorn(shipHornData),
+      lifeRecovered(lifeRecoveredData)
 {
     music.setLooping(true);
     music.setVolume(24.f);
@@ -28,6 +29,7 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
     precisionReady.setVolume(46.f);
     guidanceReady.setVolume(46.f);
     shipHorn.setVolume(48.f);
+    lifeRecovered.setVolume(65.f);
 }
 
 void GameAudio::restart()
@@ -40,6 +42,7 @@ void GameAudio::restart()
     lastMilestone = 0;
     lastPrecisionRefill = 0;
     lastGuidanceRefill = 0;
+    lastLifeRecovery = 0;
     bossPresent = false;
     setPlaying(true);
 }
@@ -70,6 +73,8 @@ void GameAudio::stopBattleSounds()
     precisionReady.stop();
     guidanceReady.stop();
     shipHorn.stop();
+    lifeRecovered.stop();
+    pendingLifeNotices = 0;
 }
 
 void GameAudio::toggleMute()
@@ -94,6 +99,7 @@ void GameAudio::setTimeScale(float scale)
     precisionReady.setPitch(scale);
     guidanceReady.setPitch(scale);
     shipHorn.setPitch(scale);
+    lifeRecovered.setPitch(scale);
     for (auto& voice : gunshipBlasts)
         voice.setPitch(scale);
 }
@@ -163,6 +169,13 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
             precisionReady.play();
         if (running && combat.guidanceRefills() > lastGuidanceRefill)
             guidanceReady.play();
+        if (running && combat.lifeRecoveries() > lastLifeRecovery)
+            pendingLifeNotices += combat.lifeRecoveries() - lastLifeRecovery;
+        if (pendingLifeNotices > 0 && lifeRecovered.getStatus() == sf::Sound::Status::Stopped)
+        {
+            lifeRecovered.play();
+            --pendingLifeNotices;
+        }
     }
     // Separate the attacks so even kills in one frame form an audible run of notes.
     if (!pendingComboNotes.empty() && comboNote.getStatus() == sf::Sound::Status::Stopped)
@@ -183,6 +196,7 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
     bossPresent = combat.battleship().has_value();
     lastPrecisionRefill = combat.precisionRefills();
     lastGuidanceRefill = combat.guidanceRefills();
+    lastLifeRecovery = combat.lifeRecoveries();
     lastVolley = combat.volleysFired();
     if (!combat.explosions().empty())
         lastExplosion = combat.explosions().back().seed;

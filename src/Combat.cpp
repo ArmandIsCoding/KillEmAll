@@ -918,9 +918,11 @@ void Combat::hitPlayer(sf::Vector2f position)
     if (invulnerable() || gameOver())
         return;
     --lives_;
-    lifeNoticeUntil_ = 0.f;
     if (gameOver())
+    {
         recoveryKills_ = 0;
+        lifeNoticeUntil_ = 0.f;
+    }
     grace_ = 2.f;
     explode(position, ExplosionKind::Player);
 }
@@ -945,6 +947,7 @@ void Combat::damage(Enemy& enemy, int amount, unsigned chainId)
             if (recoveryKills_ == killsPerLife)
             {
                 ++lives_;
+                ++lifeRecoveries_;
                 recoveryKills_ = 0;
                 lifeNoticeUntil_ = elapsed_ + lifeNoticeDuration;
             }

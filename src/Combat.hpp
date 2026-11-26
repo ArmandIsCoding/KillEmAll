@@ -175,6 +175,7 @@ public:
     int bestCombo() const { return bestCombo_; }
     int lives() const { return lives_; }
     int recoveryKills() const { return recoveryKills_; }
+    unsigned lifeRecoveries() const { return lifeRecoveries_; }
     float lifeRecoveryFlash() const;
     int power() const;
     unsigned int volleysFired() const { return volleysFired_; }
@@ -251,6 +252,7 @@ private:
     int score_ = 0;
     int lives_ = maxLives;
     int recoveryKills_ = 0;
+    unsigned lifeRecoveries_ = 0;
     float lifeNoticeUntil_ = 0.f;
     float elapsed_ = 0.f;
     float distance_ = 0.f;
