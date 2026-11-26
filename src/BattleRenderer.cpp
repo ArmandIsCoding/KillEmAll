@@ -89,6 +89,25 @@ namespace
 		return value - period * std::floor(value / period);
 	}
 
+	void lampReflection(Batch& batch, float x, float waterline, float length, float width,
+		Color tint, float strength, float time, float phase)
+	{
+		if (strength <= 0.f || x < -2.f * width || x > sceneWidth + 2.f * width)
+			return;
+
+		// Each row catches a different wave crest. Their lateral sway widens toward the viewer.
+		for (float depth = 1.f; depth < length; depth += 2.f + 3.f * depth / length)
+		{
+			const float t = depth / length;
+			const float wave = std::sin(phase + time * 2.7f - depth * 0.48f);
+			const float glint = 0.5f + 0.5f * std::cos(time * 1.9f + phase + depth * 1.13f);
+			const float middle = x + wave * t * width * 0.72f;
+			const float span = (0.8f + width * (0.28f + 0.82f * t)) * (0.45f + 0.75f * glint);
+			const float light = strength * (1.f - t) * (0.26f + 0.65f * glint);
+			rectangle(batch, middle - span, waterline + depth, 2.f * span, 1.f, faded(tint, light));
+		}
+	}
+
 	void gunshipFlash(Batch& batch, const Explosion& effect)
 	{
 		const float remaining = 1.f - effect.age / 0.38f;
@@ -137,42 +156,105 @@ namespace
 	constexpr float coastWidth = 1536.f;
 	constexpr float coastMargin = Combat::gunshipShakeAmplitude + 1.f;
 	constexpr float skyTravel = 0.014f;
+	constexpr float townTravel = 0.26f;
 	constexpr float harbourTravel = 0.44f;
 
+	float nightfall(float elapsed)
+	{
+		const float t = std::clamp((elapsed - 8.f) / 132.f, 0.f, 1.f);
+		return t * t * (3.f - 2.f * t);
+	}
+
+	Color nightTint(Color moonlit, float night)
+	{
+		const auto channel = [night](std::uint8_t value) {
+			return static_cast<std::uint8_t>(255.f + night * (value - 255.f));
+		};
+		return { channel(moonlit.r), channel(moonlit.g), channel(moonlit.b) };
+	}
+
 	// All panoramas tile across the atlas and extend past the sides of the shaken view.
-	void coastStrip(Batch& batch, float top, float bottom, float atlasTop, float atlasBottom, float scroll)
+	void coastStrip(Batch& batch, float top, float bottom, float atlasTop, float atlasBottom, float scroll,
+		Color tint = Color::White)
 	{
 		const float left = -coastMargin, right = sceneWidth + coastMargin;
 		const float u = std::floor(wrap(scroll, coastWidth));
-		quad(batch, { { left, top }, Color::White, { u + left, atlasTop } },
-			{ { right, top }, Color::White, { u + right, atlasTop } },
-			{ { right, bottom }, Color::White, { u + right, atlasBottom } },
-			{ { left, bottom }, Color::White, { u + left, atlasBottom } });
+		quad(batch, { { left, top }, tint, { u + left, atlasTop } },
+			{ { right, top }, tint, { u + right, atlasTop } },
+			{ { right, bottom }, tint, { u + right, atlasBottom } },
+			{ { left, bottom }, tint, { u + left, atlasBottom } });
 	}
 
-	void eveningStars(Batch& batch, float time, float distance)
+	void nightSky(Batch& batch, float night)
 	{
-		unsigned seed = 3718;
-		for (int i = 0; i < 153; ++i)
+		if (night == 0.f) return;
+		const float left = -coastMargin, right = sceneWidth + coastMargin;
+		const Color afterglow = faded({ 254, 131, 91 }, 0.8f * night * (1.f - night));
+		const Color clearGlow = faded(afterglow, 0.f);
+		quad(batch, {{left, 230.f}, clearGlow}, {{right, 230.f}, clearGlow},
+			{{right, 427.f}, afterglow}, {{left, 427.f}, afterglow});
+		const Color zenith = faded({ 6, 13, 34 }, night * 0.92f);
+		const Color middle = faded({ 16, 29, 64 }, night * night * 0.91f);
+		const Color horizon = faded({ 59, 53, 90 }, night * night * night * 0.92f);
+		quad(batch, {{left, -coastMargin}, zenith}, {{right, -coastMargin}, zenith},
+			{{right, 235.f}, middle}, {{left, 235.f}, middle});
+		quad(batch, {{left, 235.f}, middle}, {{right, 235.f}, middle},
+			{{right, 427.f}, horizon}, {{left, 427.f}, horizon});
+	}
+
+	struct Star
+	{
+		float x, y, phase, threshold;
+	};
+
+	void eveningStars(Batch& batch, float time, float distance, float night)
+	{
+		// Each star has a fixed magnitude so the same sky is revealed throughout a run.
+		static const auto stars = [] {
+			std::array<Star, 614> field{};
+			unsigned seed = 3718;
+			for (std::size_t i = 0; i < field.size(); ++i)
+			{
+				auto& star = field[i];
+				star.x = sample(seed) * coastWidth;
+				star.y = 3.f + (i < 153 ? 192.f : 344.f) * sample(seed);
+				star.phase = sample(seed) * tau;
+				star.threshold = i < 153 ? -1.f : sample(seed) * 0.84f;
+				if (i > 410)
+				{
+					const float band = 136.f + 73.f * std::sin(star.x / coastWidth * tau);
+					star.y = band + (sample(seed) + sample(seed) - 1.f) * 72.f;
+				}
+			}
+			return field;
+		}();
+		for (std::size_t i = 0; i < stars.size(); ++i)
 		{
-			const float x = wrap(sample(seed) * coastWidth - distance * 0.009f + 4.f, coastWidth) - 4.f;
-			const float y = 3.f + 192.f * sample(seed);
-			const float phase = sample(seed) * tau;
+			const Star& star = stars[i];
+			if (night <= star.threshold) continue;
+			const float x = wrap(star.x - distance * 0.009f + 4.f, coastWidth) - 4.f;
 			if (x < -coastMargin || x > sceneWidth + coastMargin) continue;
-			const float pulse = 0.57f + 0.43f * std::sin(time * 1.25f + phase);
-			const float opacity = (0.32f + 0.55f * pulse) * (1.f - y / 255.f);
-			const Color light = i % 4 ? Color{ 190, 222, 224 } : Color{ 255, 214, 169 };
+			const float y = star.y;
+			const float pulse = 0.57f + 0.43f * std::sin(time * 1.25f + star.phase);
+			const float reveal = std::min(1.f, 6.f * (night - star.threshold));
+			const float brightness = 0.32f + 0.55f * pulse + 0.18f * night;
+			const float opacity = reveal * brightness * (1.f - y / (255.f + 685.f * night));
+			const Color light = i % 4 ? Color{ 193, 224, 243 } : Color{ 255, 216, 175 };
 			rectangle(batch, x, y, 1.f, 1.f, faded(light, opacity));
 			if (i % 19 == 0)
 			{
 				rectangle(batch, x - 2.f, y, 5.f, 1.f, faded(light, opacity * 0.58f));
 				rectangle(batch, x, y - 2.f, 1.f, 5.f, faded(light, opacity * 0.61f));
 			}
+			else if (i % 11 == 0)
+				rectangle(batch, x + 1.f, y, 1.f, 1.f, faded(light, 0.76f * opacity * night));
 		}
 	}
 
-	void sunsetReflection(Batch& batch, float time, float distance)
+	void sunsetReflection(Batch& batch, float time, float distance, float night)
 	{
+		const float sunlight = 1.f - std::clamp((night - 0.20f) / 0.59f, 0.f, 1.f);
+		if (sunlight == 0.f) return;
 		unsigned seed = 9213;
 		const float sun = 708.f - distance * skyTravel;
 		for (int i = 0; i < 135; ++i)
@@ -184,13 +266,14 @@ namespace
 			const float x = wrap(sun + drift + 5.f * std::sin(phase + time) + 64.f, coastWidth) - 64.f;
 			const float y = 425.f + depth * 114.f;
 			rectangle(batch, x, y, (2.f + depth * 20.f) * (0.28f + wave), 1.f,
-				faded({ 255, 197, 132 }, (0.14f + 0.55f * wave) * (1.f - 0.42f * depth)));
+				faded({ 255, 197, 132 }, sunlight * (0.14f + 0.55f * wave) * (1.f - 0.42f * depth)));
 		}
 	}
 
-	void water(Batch& batch, float time, float distance)
+	void water(Batch& batch, float time, float distance, float night)
 	{
 		// A closer band of moving glints and navigation buoys tracks faster than the coast.
+		const float glint = 1.f - 0.56f * night;
 		for (unsigned i = 0; i < 68; ++i)
 		{
 			const float depth = static_cast<float>((i * 37) % 67) / 66.f;
@@ -199,10 +282,10 @@ namespace
 			const float y = 435.f + depth * 104.f;
 			const float twinkle = 0.5f + 0.5f * std::sin(1.6f * time + i * 2.3f);
 			const float width = 2.f + depth * (4.f + 15.f * twinkle);
-			rectangle(batch, x, y, width, 1.f, faded({ 151, 212, 204 }, 0.14f + 0.49f * twinkle));
+			rectangle(batch, x, y, width, 1.f, faded({ 151, 212, 204 }, glint * (0.14f + 0.49f * twinkle)));
 			if (depth > 0.59f && twinkle > 0.65f)
 				rectangle(batch, x + width, y + 1.f, width * 0.43f, 1.f,
-					faded({ 139, 196, 191 }, 0.33f * twinkle));
+					faded({ 139, 196, 191 }, glint * 0.33f * twinkle));
 		}
 
 		for (int i = 0; i < 2; ++i)
@@ -241,11 +324,129 @@ namespace
 		}
 	}
 
-	void patrolBoat(Batch& batch, const Enemy& boat)
+	constexpr Color moonlitSteel{ 140, 179, 224 };
+
+	float lampIntensity(float night, float start)
+	{
+		return std::clamp((night - start) / 0.36f, 0.f, 1.f);
+	}
+
+	float fixtureX(float atlasX, float scroll)
+	{
+		// Match the texture's snapped offset, with room for a beam to enter before its lamp.
+		return wrap(atlasX - std::floor(wrap(scroll, coastWidth)) + 64.f, coastWidth) - 64.f;
+	}
+
+	void distantHarbourLights(Batch& batch, float time, float townOffset, float night)
+	{
+		const float strength = lampIntensity(night, 0.17f);
+		if (strength <= 0.f)
+			return;
+
+		constexpr std::array<Vec, 5> craneTips{{{164, 396}, {200, 401}, {923, 391}, {967, 398}, {1007, 402}}};
+		constexpr Color amber{255, 182, 111};
+		for (const auto& tip : craneTips)
+		{
+			const float x = fixtureX(tip.x, townOffset);
+			rectangle(batch, x, tip.y, 2.f, 1.f, faded(amber, strength * 0.83f));
+			lampReflection(batch, x, 425.f, 9.f, 1.2f, amber, strength * 0.64f, time, tip.x);
+		}
+		const float x = fixtureX(1200.f, townOffset);
+		const float sweep = std::max(0.f, std::cos(time * 1.6f));
+		const float beacon = strength * (0.20f + 0.8f * sweep * sweep * sweep);
+		constexpr Color lantern{255, 229, 165};
+		puff(batch, {x, 376.f}, 4.f, faded(lantern, beacon * 0.21f));
+		rectangle(batch, x - 1.f, 376.f, 3.f, 1.f, faded(lantern, beacon));
+		lampReflection(batch, x, 425.f, 15.f, 2.f, lantern, beacon, time, 0.f);
+	}
+
+	void harbourLights(Batch& batch, float time, float harbourOffset, float night)
+	{
+		if (night <= 0.f)
+			return;
+
+		// Mounts are in panorama coordinates with y measured from the top of the playfield.
+		struct Fixture
+		{
+			Vec mount;
+			Color bulb;
+			float switchAt;
+			int panes;
+			float beamDrop;
+			float reflectionLength;
+		};
+		constexpr Color amber{255, 181, 79}, workLight{255, 234, 168}, glass{130, 227, 234};
+		constexpr Color beacon{255, 134, 72};
+		static constexpr std::array<Fixture, 13> fixtures{{
+			{{539, 233}, beacon,    0.05f, 1,  0, 24}, // tips of the two crane booms
+			{{435, 299}, beacon,    0.15f, 1,  0, 20},
+			{{662, 315}, glass,     0.19f, 4,  0, 52}, // crane cabs
+			{{499, 349}, glass,     0.30f, 3,  0, 45},
+			{{623, 336}, workLight, 0.34f, 1, 70, 79}, // work lamps under the cabs
+			{{471, 360}, workLight, 0.46f, 1, 47, 65},
+			{{223, 389}, amber,     0.23f, 5,  0, 44}, // windows and lamps along the quay
+			{{737, 389}, amber,     0.41f, 5,  0, 48},
+			{{187, 392}, workLight, 0.12f, 1,  0, 26},
+			{{345, 394}, amber,     0.53f, 1,  0, 30},
+			{{573, 374}, workLight, 0.59f, 1,  0, 32},
+			{{709, 394}, amber,     0.63f, 1,  0, 31},
+			{{832, 393}, workLight, 0.50f, 1,  0, 26}
+		}};
+		for (const auto& fixture : fixtures)
+		{
+			const float x = fixtureX(fixture.mount.x, harbourOffset);
+			if (night <= fixture.switchAt || x > sceneWidth + 64.f)
+				continue;
+			const float t = std::min((night - fixture.switchAt) / 0.16f, 1.f);
+			const float light = t * t * (3.f - 2.f * t);
+			const float y = fixture.mount.y;
+			if (fixture.beamDrop > 0.f)
+			{
+				// Pools of work light spill down and left onto the loading deck.
+				const float drop = fixture.beamDrop;
+				const Color lens = faded(fixture.bulb, light * 0.20f);
+				const Color mist = faded(fixture.bulb, 0.f);
+				quad(batch, {{x - 1.f, y + 1.f}, lens}, {{x + 2.f, y + 1.f}, lens},
+				     {{x - 0.12f * drop, y + drop}, mist}, {{x - 0.67f * drop, y + drop}, mist});
+			}
+			const float center = x + 3.5f * (fixture.panes - 1);
+			const float waterline = 444.f + 0.10f * (444.f - y);
+			lampReflection(batch, center, waterline, fixture.reflectionLength,
+			               4.f + fixture.panes * 1.2f, fixture.bulb, light * 0.88f, time, fixture.mount.x);
+			for (int i = 0; i < fixture.panes; ++i)
+			{
+				const float pane = x + 7.f * i;
+				puff(batch, {pane, y}, fixture.beamDrop > 0.f ? 7.f : 4.f,
+				     faded(fixture.bulb, 0.12f * light));
+				rectangle(batch, pane - 1.f, y - 1.f, fixture.panes > 1 ? 4.f : 3.f, 2.f,
+				          faded(fixture.bulb, 0.97f * light));
+				rectangle(batch, pane, y - 1.f, 1.f, 1.f, faded({255, 251, 212}, light));
+			}
+		}
+	}
+
+	void vesselLamp(Batch& batch, Vec p, float width, Color color, float intensity,
+		float waterline, float time, float phase)
+	{
+		if (intensity <= 0.f || p.y >= waterline)
+			return;
+		// The wash vanishes with the fixture as a sinking deck meets the surface.
+		intensity *= std::min(1.f, (waterline - p.y) / 4.f);
+		rectangle(batch, p.x - width * 0.5f - 3.f, p.y - 2.f, width + 6.f, 5.f,
+		          faded(color, 0.15f * intensity));
+		rectangle(batch, p.x - width * 0.5f - 1.f, p.y - 1.f, width + 2.f, 3.f,
+		          faded(color, 0.32f * intensity));
+		rectangle(batch, p.x - width * 0.5f, p.y, width, 2.f, faded(color, intensity));
+		lampReflection(batch, p.x, waterline + 1.f, 17.f + 1.5f * width,
+		               width, color, intensity, time, phase);
+	}
+
+	void patrolBoat(Batch& batch, const Enemy& boat, float night)
 	{
 		const Vec p{ std::round(boat.position.x), std::round(boat.position.y) };
+		const Color tint = boat.hitFlash > 0.f ? Color::White : nightTint(moonlitSteel, night);
 		const auto part = [&](float x, float y, float w, float h, Color color) {
-			rectangle(batch, p.x + x, p.y + y, w, h, color);
+			rectangle(batch, p.x + x, p.y + y, w, h, color * tint);
 		};
 		const Color dark{ 36, 31, 44 }, steel{ 79, 96, 102 }, plate{ 132, 152, 151 };
 		const Color rust{ 166, 77, 53 }, trim{ 240, 161, 90 }, glass{ 108, 201, 202 };
@@ -309,6 +510,14 @@ namespace
 		part(-17, -7, 13, 5, dark);
 		part(-15, -8, 9, 4, steel);
 		part(-14, -8, 6, 1, plate);
+		const float waterline = p.y + 11.f;
+		const float cabin = lampIntensity(night, 0.22f);
+		for (float x : { 5.f, 13.f })
+			vesselLamp(batch, p + Vec{x, -10.f}, 4.f, { 255, 204, 112 }, cabin, waterline, boat.age, x);
+		vesselLamp(batch, p + Vec{-28.f, -2.f}, 2.f, { 114, 239, 197 }, lampIntensity(night, 0.08f),
+		           waterline, boat.age, 1.f);
+		vesselLamp(batch, p + Vec{24.f, -3.f}, 2.f, { 223, 231, 246 }, lampIntensity(night, 0.36f),
+		           waterline, boat.age, 3.f);
 		if (boat.fireTimer <= Enemy::boatAimWarning)
 		{
 			const float charge = 1.f - boat.fireTimer / Enemy::boatAimWarning;
@@ -426,7 +635,7 @@ namespace
 	}
 
 	void drawBattleship(sf::RenderTarget& target, Batch& batch, const sf::Texture& hull,
-						const sf::Texture& flashMask, const Combat& combat, const Battleship& ship)
+						const sf::Texture& flashMask, const Combat& combat, const Battleship& ship, float night)
 	{
 		const Vec p{ std::round(ship.position.x), std::round(ship.position.y) };
 		const float sinking = ship.sinking ? std::min(1.f, ship.sinkAge / Battleship::sinkDuration) : 0.f;
@@ -436,6 +645,7 @@ namespace
 
 		const Vec topLeft = p - Vec{ 129.f, 87.f };
 		const float waterline = p.y + 21.f;
+		const Color hullColor = nightTint(moonlitSteel, night);
 		const auto descent = [&](float x) {
 			return 121.f * sinking * sinking + (p.x - x) * 0.07f * sinking;
 		};
@@ -445,8 +655,8 @@ namespace
 			const float top = std::min(waterline, topLeft.y + descent(x));
 			const float visible = std::min(size.y, waterline - top);
 			return std::array<sf::Vertex, 2>{
-				sf::Vertex{ { x, top }, Color::White, { u, 0.f } },
-				sf::Vertex{ { x, top + visible }, Color::White, { u, visible } }
+				sf::Vertex{ { x, top }, hullColor, { u, 0.f } },
+				sf::Vertex{ { x, top + visible }, hullColor, { u, visible } }
 			};
 		};
 		const auto left = edge(0.f);
@@ -462,6 +672,22 @@ namespace
 		}
 		batch.clear();
 
+		const auto deckLamp = [&](float x, float y, float width, Color color, float start)
+		{
+			const float worldX = topLeft.x + x;
+			const float strength = lampIntensity(night, start) * (1.f - sinking);
+			vesselLamp(batch, {worldX, topLeft.y + y + descent(worldX)}, width, color,
+			           strength, waterline, ship.age + ship.sinkAge, x * 0.14f);
+		};
+		deckLamp(7.f, 79.f, 3.f, { 116, 241, 195 }, 0.08f);
+		deckLamp(243.f, 78.f, 3.f, { 222, 231, 247 }, 0.14f);
+		for (float x : {118.f, 127.f, 136.f, 143.f})
+			deckLamp(x, 34.f, 4.f, { 255, 220, 144 }, 0.18f + (x - 118.f) * 0.008f);
+		for (float x : {101.f, 113.f, 126.f, 139.f, 151.f, 164.f})
+			deckLamp(x, 60.f, 4.f, { 247, 183, 101 }, 0.25f + (x - 101.f) * 0.004f);
+		// These fixtures already follow the hull's tilt. Only the smoke and guns below
+		// still need the sinking transform.
+		const auto firstDeckVertex = batch.size();
 		for (int i = 0; i < 4; ++i)
 		{
 			const float lift = wrap(ship.age * 10.f + i * 4.5f, 18.f);
@@ -472,9 +698,9 @@ namespace
 			battleshipTurret(batch, ship.mountPosition(kind), kind, combat.bossTurret(kind), ship.age);
 		if (ship.sinking)
 		{
-			for (auto& vertex : batch)
+			for (auto i = firstDeckVertex; i < batch.size(); ++i)
 			{
-				auto& pos = vertex.position;
+				auto& pos = batch[i].position;
 				pos.y = std::min(waterline, pos.y + descent(pos.x));
 			}
 		}
@@ -966,21 +1192,29 @@ void BattleRenderer::drawBackground(sf::RenderTarget& target, const Combat& comb
 {
 	const float elapsedSeconds = combat.elapsed();
 	const float distance = combat.distance();
+	const float night = nightfall(elapsedSeconds);
 	const sf::RenderStates panorama(&coastLayers);
 
 	textured.clear();
-	coastStrip(textured, -coastMargin, 0.f, 0.5f, 0.5f, distance * skyTravel);
-	coastStrip(textured, 0.f, 427.f, 0.f, 427.f, distance * skyTravel);
+	const float skyOffset = distance * skyTravel;
+	const float sunsetDrop = std::round(166.f * night);
+	coastStrip(textured, -coastMargin, 0.f, 0.5f, 0.5f, skyOffset);
+	// Stretch only the empty sky above the solar disc so it descends behind the ridges at its original size.
+	coastStrip(textured, 0.f, 204.f + sunsetDrop, 0.f, 204.f, skyOffset);
+	coastStrip(textured, 204.f + sunsetDrop, 427.f, 204.f, 427.f - sunsetDrop, skyOffset);
 	drawBatch(target, textured, panorama);
 	geometry.clear();
-	eveningStars(geometry, elapsedSeconds, distance);
+	nightSky(geometry, night);
+	eveningStars(geometry, elapsedSeconds, distance, night);
 	drawBatch(target, geometry);
 
 	textured.clear();
-	coastStrip(textured, 8.f, 213.f, 428.f, 633.f, distance * 0.050f);    // high cirrus
-	coastStrip(textured, 0.f, 333.f, 635.f, 968.f, distance * 0.107f);    // cumulus banks
-	coastStrip(textured, 314.f, 427.f, 970.f, 1083.f, distance * 0.155f); // distant ridge
-	coastStrip(textured, 331.f, 427.f, 1085.f, 1181.f, distance * 0.26f); // coastal town
+	coastStrip(textured, 8.f, 213.f, 428.f, 633.f, distance * 0.050f, nightTint({123, 144, 192}, night));
+	coastStrip(textured, 0.f, 333.f, 635.f, 968.f, distance * 0.107f, nightTint({53, 75, 137}, night));
+	coastStrip(textured, 314.f, 427.f, 970.f, 1083.f, distance * 0.155f, nightTint({70, 83, 140}, night));
+	const float townOffset = distance * townTravel;
+	coastStrip(textured, 331.f, 427.f, 1085.f, 1181.f, townOffset, nightTint({66, 82, 131}, night));
+	const Color seaTint = nightTint({54, 96, 149}, night);
 	// Each depth band moves together so individual waves retain their shape over long runs.
 	for (int y = 425; y < 540; y += 3)
 	{
@@ -989,29 +1223,32 @@ void BattleRenderer::drawBackground(sf::RenderTarget& target, const Combat& comb
 		const float travel = y < 449 ? 0.25f : y < 485 ? 0.48f : 0.78f;
 		const float ripple = (0.6f + (top - 425.f) * 0.014f) * std::sin(elapsedSeconds * 1.7f + top * 0.19f);
 		coastStrip(textured, top, bottom, 1182.f + top - 425.f, 1182.f + bottom - 425.f,
-			distance * travel + ripple);
+			distance * travel + ripple, seaTint);
 	}
 	// Mirror the last few wave rows into the overscan so shaking also exposes textured water.
-	coastStrip(textured, 540.f, 540.f + coastMargin, 1297.f, 1297.f - coastMargin, distance * 0.78f);
+	coastStrip(textured, 540.f, 540.f + coastMargin, 1297.f, 1297.f - coastMargin, distance * 0.78f, seaTint);
 	drawBatch(target, textured, panorama);
 
 	geometry.clear();
-	sunsetReflection(geometry, elapsedSeconds, distance);
+	sunsetReflection(geometry, elapsedSeconds, distance, night);
+	distantHarbourLights(geometry, elapsedSeconds, townOffset, night);
 	drawBatch(target, geometry);
 
 	textured.clear();
 	const float harbourOffset = distance * harbourTravel;
-	coastStrip(textured, 228.f, 444.f, 1300.f, 1516.f, harbourOffset);
+	const Color portTint = nightTint({94, 104, 142}, night);
+	coastStrip(textured, 228.f, 444.f, 1300.f, 1516.f, harbourOffset, portTint);
 	for (int y = 444; y < 534; y += 5)
 	{
 		const float top = static_cast<float>(y);
 		const float ripple = (top - 444.f) * 0.045f * std::sin(elapsedSeconds * 2.f + top * 0.28f);
 		coastStrip(textured, top, top + 5.f, 1516.f + top - 444.f, 1521.f + top - 444.f,
-			harbourOffset + ripple);
+			harbourOffset + ripple, portTint);
 	}
 	drawBatch(target, textured, panorama);
 	geometry.clear();
-	water(geometry, elapsedSeconds, distance);
+	harbourLights(geometry, elapsedSeconds, harbourOffset, night);
+	water(geometry, elapsedSeconds, distance, night);
 	for (const auto& enemy : combat.enemies())
 		if (enemy.flight == FlightPath::Pursuit || enemy.flight == FlightPath::Breakaway)
 			hunterSignal(geometry, enemy);
@@ -1034,15 +1271,16 @@ void BattleRenderer::drawEnemies(sf::RenderTarget& target, const Combat& combat)
 	geometry.clear();
 	textured.clear();
 	foreground.clear();
+	const float night = nightfall(combat.elapsed());
 	if (const auto& ship = combat.battleship())
-		drawBattleship(target, foreground, battleshipHull, battleshipFlashMask, combat, *ship);
+		drawBattleship(target, foreground, battleshipHull, battleshipFlashMask, combat, *ship, night);
 	for (const Enemy& enemy : combat.enemies())
 	{
 		if (enemy.kind == EnemyKind::BattleshipTurret)
 			continue;
 		if (enemy.kind == EnemyKind::PatrolBoat)
 		{
-			patrolBoat(foreground, enemy);
+			patrolBoat(foreground, enemy, night);
 			continue;
 		}
 		enemyFrame(geometry, enemy, Color::White);

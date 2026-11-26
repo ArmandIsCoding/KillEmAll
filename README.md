@@ -75,7 +75,11 @@ Al volver al **100 %**, precisión avisa con **dos campanadas ascendentes** y gu
 
 ## Tráfico sobre el puerto
 
-Las estrellas titilan por detrás de dos capas de nubes que pasan a velocidades distintas. Las sierras y la ciudad quedan en la distancia mientras las grúas del puerto cruzan delante. Una franja de luz dorada se dibuja en el mar bajo el sol. Los reflejos de las grúas ondulan bajo los pilotes y las boyas y la espuma pasan más rápido en primer plano. Todas las capas acompañan la aceleración del vuelo y responden a **Shift** y a la pausa.
+Despegás al atardecer. Las boyas y la espuma pasan rápido en primer plano mientras la ciudad, las sierras y dos capas de nubes se mueven más despacio. A los **8 segundos de vuelo** empieza a bajar el sol. Su reflejo dorado se apaga a medida que se oculta detrás de las sierras y aparecen más estrellas entre las nubes. Las balizas de las grúas se prenden primero. Después se iluminan las cabinas y los focos de carga, y sus reflejos se quiebran en las olas bajo el muelle.
+
+Desde los **2 minutos y 20 segundos de vuelo** es noche cerrada. Al otro lado de la bahía se distingue el destello del faro. Podés seguir a las lanchas por sus luces de proa y popa, y reconocer al acorazado por las dos hileras de ventanas iluminadas. Los reflejos acompañan a cada barco y se apagan con él al hundirse. **Shift** ralentiza el anochecer junto con la acción. La pausa congela hasta el titilar de las estrellas y cada partida nueva vuelve a empezar al atardecer.
+
+![El sol baja detrás de las sierras, aparecen las estrellas y las luces de las grúas y los barcos se reflejan en el mar.](docs/media/anochecer.gif)
 
 ![De izquierda a derecha, tu avión, el explorador rojo de 100 puntos, el interceptor de 200 y el blindado de 500.](docs/media/hangar.png)
 
