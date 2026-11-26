@@ -10,9 +10,10 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
       powerData(folder / "power.wav"), comboData(folder / "combo-note.wav"),
       fanfareFiveData(folder / "combo-five.wav"), fanfareTenData(folder / "combo-ten.wav"),
       precisionReadyData(folder / "precision-ready.wav"), guidanceReadyData(folder / "guidance-ready.wav"),
+      shipHornData(folder / "ship-horn.wav"),
       music(musicData), weapon(cannonData), blast(blastData), wave(blastData),
       impact(impactData), upgrade(powerData), comboNote(comboData), fanfare(fanfareFiveData),
-      precisionReady(precisionReadyData), guidanceReady(guidanceReadyData)
+      precisionReady(precisionReadyData), guidanceReady(guidanceReadyData), shipHorn(shipHornData)
 {
     music.setLooping(true);
     music.setVolume(24.f);
@@ -26,6 +27,7 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
     fanfare.setVolume(55.f);
     precisionReady.setVolume(46.f);
     guidanceReady.setVolume(46.f);
+    shipHorn.setVolume(48.f);
 }
 
 void GameAudio::restart()
@@ -38,6 +40,7 @@ void GameAudio::restart()
     lastMilestone = 0;
     lastPrecisionRefill = 0;
     lastGuidanceRefill = 0;
+    bossPresent = false;
     lastLives = 3;
     setPlaying(true);
 }
@@ -67,6 +70,7 @@ void GameAudio::stopBattleSounds()
     upgrade.stop();
     precisionReady.stop();
     guidanceReady.stop();
+    shipHorn.stop();
 }
 
 void GameAudio::toggleMute()
@@ -90,6 +94,7 @@ void GameAudio::setTimeScale(float scale)
     fanfare.setPitch(scale);
     precisionReady.setPitch(scale);
     guidanceReady.setPitch(scale);
+    shipHorn.setPitch(scale);
     for (auto& voice : gunshipBlasts)
         voice.setPitch(scale);
 }
@@ -134,6 +139,8 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
     }
     if (audibleFrame)
     {
+        if (running && combat.battleship() && !bossPresent)
+            shipHorn.play();
         for (const auto& effect : combat.explosions())
         {
             if (effect.seed <= lastExplosion)
@@ -174,6 +181,7 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
         fanfare.play();
     }
     lastMilestone = milestone;
+    bossPresent = combat.battleship().has_value();
     lastPrecisionRefill = combat.precisionRefills();
     lastGuidanceRefill = combat.guidanceRefills();
     lastVolley = combat.volleysFired();

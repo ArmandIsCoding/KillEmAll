@@ -258,6 +258,150 @@ namespace
 		}
 	}
 
+	void battleshipWake(Batch& batch, Vec p, float time, float strength)
+	{
+		for (int i = 0; i < 13; ++i)
+		{
+			const float drift = wrap(time * 38.f + i * 23.f, 110.f);
+			const float foam = (1.f - drift / 110.f) * strength;
+			const float y = p.y + 9.f + (i % 3) * 2.f + drift * 0.06f;
+			rectangle(batch, p.x + 105.f + drift, y, 3.f + 16.f * foam, 2.f,
+				faded({ 166, 226, 215 }, 0.85f * foam));
+		}
+		for (int i = 0; i < 7; ++i)
+		{
+			const float drift = wrap(time * 26.f + i * 19.f, 58.f);
+			const float y = p.y + 3.f + 0.14f * drift + 2.f * std::sin(drift * 0.2f);
+			rectangle(batch, p.x - 124.f + drift, y, 5.f + 0.12f * drift, 2.f,
+				faded({ 221, 246, 222 }, strength * (1.f - drift / 78.f)));
+		}
+	}
+
+	void battleshipTurret(Batch& batch, Vec p, TurretKind kind, const Enemy* turret, float time)
+	{
+		const auto part = [&](float x, float y, float w, float h, Color color) {
+			rectangle(batch, p.x + x, p.y + y, w, h, color);
+		};
+		const Color ink{ 40, 37, 48 }, shade{ 79, 93, 107 }, iron{ 151, 170, 166 }, brass{ 213, 173, 106 };
+		part(-15, 5, 30, 4, ink);
+		part(-12, 5, 24, 1, iron);
+		if (!turret)
+		{
+			part(-13, 1, 26, 4, shade);
+			part(-10, -2, 5, 4, ink);
+			part(-5, 1, 9, 3, { 148, 65, 50 });
+			part(6, -4, 4, 6, ink);
+			for (int i = 0; i < 3; ++i)
+			{
+				const float rise = wrap(time * 14.f + i * 7.f, 21.f);
+				puff(batch, p + Vec{ rise * 0.38f, -rise }, 2.f + rise * 0.21f,
+					faded({ 63, 53, 59 }, 0.76f * (1.f - rise / 21.f)));
+			}
+			part(-4, 1, 4, 1, { 254, 149, 78 });
+			return;
+		}
+
+		const auto base = turret->turretPivot();
+		const auto tip = turret->turretMuzzle();
+		const auto dir = turret->turretDirection();
+		const Vec side = dir.perpendicular();
+		const auto barrel = [&](float offset, float thickness) {
+			const Vec a = base + side * offset;
+			const Vec b = tip + side * offset;
+			streak(batch, a, b + dir, dir, thickness + 1.f, ink);
+			streak(batch, a, b, dir, thickness, iron);
+			streak(batch, b - dir * 5.f, b, dir, thickness + 0.4f, shade);
+		};
+		const Color armor = turret->hitFlash > 0.f ? Color{ 255, 239, 197 } : iron;
+		Color lamp = brass;
+		if (kind == TurretKind::Cannon)
+		{
+			barrel(0.f, 3.f);
+			part(-15, -3, 29, 9, ink);
+			part(-12, -8, 23, 7, ink);
+			part(-11, -7, 19, 3, armor);
+			part(-13, -3, 23, 5, shade);
+			part(-10, -3, 6, 4, brass);
+		}
+		else if (kind == TurretKind::Flak)
+		{
+			barrel(-2.8f, 1.4f);
+			barrel(2.8f, 1.4f);
+			part(-10, -6, 20, 12, ink);
+			part(-7, -10, 13, 6, ink);
+			part(-6, -9, 11, 4, armor);
+			part(-8, -3, 16, 7, shade);
+			lamp = { 107, 232, 214 };
+		}
+		else
+		{
+			barrel(0.f, 2.f);
+			part(-13, -5, 27, 11, ink);
+			part(-11, -7, 18, 3, armor);
+			part(-10, -4, 21, 6, shade);
+			for (float x : { 3.f, 6.f, 9.f })
+				part(x, -4, 1, 5, ink);
+			lamp = { 248, 131, 104 };
+		}
+		part(-7, 1, 5, 2, lamp);
+		const float warning = turret->aimWarning();
+		if (warning > 0.f)
+		{
+			puff(batch, tip, 3.f + 4.f * warning, { 217, 52, 106 });
+			puff(batch, tip, 1.f + 2.f * warning, { 255, 236, 174 });
+		}
+	}
+
+	void drawBattleship(sf::RenderTarget& target, Batch& batch, const sf::Texture& hull,
+						const Combat& combat, const Battleship& ship)
+	{
+		const Vec p{ std::round(ship.position.x), std::round(ship.position.y) };
+		const float sinking = ship.sinking ? std::min(1.f, ship.sinkAge / Battleship::sinkDuration) : 0.f;
+		battleshipWake(batch, p, ship.age, 1.f - sinking);
+		drawBatch(target, batch);
+		batch.clear();
+
+		const Vec topLeft = p - Vec{ 129.f, 87.f };
+		const float waterline = p.y + 21.f;
+		const auto descent = [&](float x) {
+			return 121.f * sinking * sinking + (p.x - x) * 0.07f * sinking;
+		};
+		const Vec size(hull.getSize());
+		const auto edge = [&](float u) {
+			const float x = topLeft.x + u;
+			const float top = std::min(waterline, topLeft.y + descent(x));
+			const float visible = std::min(size.y, waterline - top);
+			return std::array<sf::Vertex, 2>{
+				sf::Vertex{ { x, top }, Color::White, { u, 0.f } },
+				sf::Vertex{ { x, top + visible }, Color::White, { u, visible } }
+			};
+		};
+		const auto left = edge(0.f);
+		const auto right = edge(size.x);
+		quad(batch, left[0], right[0], right[1], left[1]);
+		drawBatch(target, batch, &hull);
+		batch.clear();
+
+		for (int i = 0; i < 4; ++i)
+		{
+			const float lift = wrap(ship.age * 10.f + i * 4.5f, 18.f);
+			puff(batch, p + Vec{ 38.f + 0.9f * lift, -55.f - lift }, 2.f + lift * 0.24f,
+				faded({ 61, 61, 72 }, 0.63f * (1.f - lift / 18.f)));
+		}
+		for (auto kind : { TurretKind::Cannon, TurretKind::Flak, TurretKind::Burst })
+			battleshipTurret(batch, ship.mountPosition(kind), kind, combat.bossTurret(kind), ship.age);
+		if (ship.sinking)
+		{
+			for (auto& vertex : batch)
+			{
+				auto& pos = vertex.position;
+				pos.y = std::min(waterline, pos.y + descent(pos.x));
+			}
+		}
+		drawBatch(target, batch);
+		batch.clear();
+	}
+
 	void hunterSignal(Batch& batch, const Enemy& enemy)
 	{
 		const float heading = enemy.velocity.x > 0.f ? 1.f : -1.f;
@@ -634,7 +778,7 @@ namespace
 
 BattleRenderer::BattleRenderer(const std::filesystem::path& arcadeDirectory)
 	: coast(arcadeDirectory / "coast.png"), enemyAtlas(arcadeDirectory / "enemies.png"),
-	burstAtlas(arcadeDirectory / "burst.png")
+	burstAtlas(arcadeDirectory / "burst.png"), battleshipHull(arcadeDirectory / "battleship-hull.png")
 {
 	coast.setRepeated(true);
 }
@@ -680,8 +824,12 @@ void BattleRenderer::drawEnemies(sf::RenderTarget& target, const Combat& combat)
 	geometry.clear();
 	textured.clear();
 	foreground.clear();
+	if (const auto& ship = combat.battleship())
+		drawBattleship(target, foreground, battleshipHull, combat, *ship);
 	for (const Enemy& enemy : combat.enemies())
 	{
+		if (enemy.kind == EnemyKind::BattleshipTurret)
+			continue;
 		if (enemy.kind == EnemyKind::PatrolBoat)
 		{
 			patrolBoat(foreground, enemy);

@@ -9,7 +9,22 @@
 #include <unordered_map>
 #include <vector>
 
-enum class EnemyKind { Scout, Striker, Gunship, PatrolBoat };
+enum class EnemyKind { Scout, Striker, Gunship, PatrolBoat, BattleshipTurret };
+enum class TurretKind { Cannon, Flak, Burst };
+
+struct Battleship
+{
+    static constexpr int turretHealth = 40;
+    static constexpr int maxHealth = 3 * turretHealth;
+    static constexpr float sinkDuration = 1.3f;
+    sf::Vector2f position{1088.f, 509.f};
+    float age = 0.f;
+    bool sinking = false;
+    float sinkAge = 0.f;
+
+    sf::Vector2f mountPosition(TurretKind kind) const;
+    bool touchesHull(sf::Vector2f point, float radius) const;
+};
 enum class ShotKind { Player, PlayerWave, Enemy, EnemyOrb, Missile };
 enum class WeaponMode { Cannon, Missiles, Laser };
 enum class ExplosionKind { Enemy, Gunship, Player, Wave };
@@ -31,11 +46,13 @@ struct Enemy
     std::vector<unsigned> shockwavesHit{};
     sf::Vector2f turretTarget{};
     FlightPath flight = FlightPath::Weave;
+    TurretKind turretKind = TurretKind::Cannon;
 
     static constexpr float boatAimWarning = 0.48f;
-    sf::Vector2f turretPivot() const { return position + sf::Vector2f{-10.f, -5.f}; }
+    sf::Vector2f turretPivot() const;
     sf::Vector2f turretDirection() const;
-    sf::Vector2f turretMuzzle() const { return turretPivot() + turretDirection() * 15.f; }
+    sf::Vector2f turretMuzzle() const;
+    float aimWarning() const;
     int maxHealth() const;
 };
 
@@ -138,6 +155,9 @@ public:
     void reset();
 
     const std::vector<Enemy>& enemies() const { return enemies_; }
+    const std::optional<Battleship>& battleship() const { return battleship_; }
+    const Enemy* bossTurret(TurretKind kind) const;
+    int bossHealth() const;
     const std::vector<Shot>& shots() const { return shots_; }
     const std::optional<LaserPulse>& laserPulse() const { return laserPulse_; }
     WeaponMode weaponMode() const { return weaponMode_; }
@@ -182,6 +202,9 @@ private:
     void spawnFormation();
     void spawnBoat();
     void updateBoat(Enemy& boat, float dt, sf::Vector2f playerPosition);
+    void updateBattleship(float dt);
+    void updateBossTurret(Enemy& turret, float dt, sf::Vector2f playerPosition);
+    void sinkBattleship(unsigned chainId);
     void updateEnemies(float dt, sf::Vector2f playerPosition);
     void fireEnemy(Enemy& enemy, sf::Vector2f playerPosition);
     float nextPickupDelay();
@@ -202,6 +225,8 @@ private:
     PowerMeter precision_;
     PowerMeter guidance_;
     std::vector<Enemy> enemies_;
+    std::optional<Battleship> battleship_;
+    float nextBoss_ = 42.f;
     std::vector<Shot> shots_;
     std::vector<FadingTrail> fadingTrails_;
     std::vector<Explosion> explosions_;

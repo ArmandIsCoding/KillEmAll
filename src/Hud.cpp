@@ -48,7 +48,33 @@ std::string scoreNumber(int points)
     return number;
 }
 
-void comboNotice(sf::RenderTarget& target, const sf::Font& font, Combo combo)
+void bossMeter(sf::RenderTarget& target, const sf::Font& font, const Combat& combat)
+{
+    rect(target, 265, 63, 430, 25, {15, 27, 34, 242});
+    rect(target, 265, 63, 3, 25, gold);
+    label(target, font, "ACORAZADO", 277, 71, 10, ivory);
+
+    // The three sections match the guns on deck, from bow to stern.
+    constexpr std::array sections{TurretKind::Cannon, TurretKind::Flak, TurretKind::Burst};
+    rect(target, 378, 68, 262, 15, seam);
+    rect(target, 380, 70, 258, 11, ink);
+    for (std::size_t i = 0; i < sections.size(); ++i)
+    {
+        const float x = 380.f + 87.f * static_cast<float>(i);
+        rect(target, x, 70, 84, 11, {64, 46, 48});
+        if (const auto* gun = combat.bossTurret(sections[i]))
+        {
+            const float fill = std::ceil(84.f * gun->health / gun->maxHealth());
+            rect(target, x, 70, fill, 11, gun->hitFlash > 0.f ? gold : sf::Color{225, 101, 77});
+            rect(target, x, 70, fill, 2, {255, 191, 140});
+        }
+    }
+    const int percent = (100 * combat.bossHealth() + Battleship::maxHealth - 1) / Battleship::maxHealth;
+    const auto value = std::to_string(percent) + "%";
+    label(target, font, value, 687.f - 10.f * static_cast<float>(value.size()), 71, 10, ivory);
+}
+
+void comboNotice(sf::RenderTarget& target, const sf::Font& font, Combo combo, float top)
 {
     struct Tier { unsigned size; sf::Color color; };
     constexpr std::array<Tier, 9> tiers{{
@@ -60,7 +86,7 @@ void comboNotice(sf::RenderTarget& target, const sf::Font& font, Combo combo)
     const auto count = "COMBO x" + std::to_string(combo.kills);
     const auto bonus = "+" + std::to_string(combo.bonus);
     constexpr unsigned bonusSize = 12;
-    constexpr float left = 22.f, top = 60.f;
+    constexpr float left = 22.f;
     const float height = size + 10.f;
     // Press Start 2P advances one character size per glyph.
     const float divider = left + 16.f + static_cast<float>(count.size() * size);
@@ -72,7 +98,7 @@ void comboNotice(sf::RenderTarget& target, const sf::Font& font, Combo combo)
     label(target, font, bonus, divider + 8.f, top + std::round((height - bonusSize) * 0.5f) + 1.f, bonusSize, ivory);
 }
 
-void milestoneNotice(sf::RenderTarget& target, const sf::Font& font, int milestone)
+void milestoneNotice(sf::RenderTarget& target, const sf::Font& font, int milestone, float top)
 {
     const sf::String title = milestone == 10 ? U"\u00a1LEGENDARIO!" : U"\u00a1IMPARABLE!";
     const auto count = "x" + std::to_string(milestone);
@@ -80,11 +106,11 @@ void milestoneNotice(sf::RenderTarget& target, const sf::Font& font, int milesto
     const float tagWidth = 10.f + static_cast<float>(count.size() * 12);
     const float tagX = 938.f - tagWidth;
     const float left = tagX - 20.f - static_cast<float>(title.getSize() * 15);
-    rect(target, left, 60, 938.f - left, 29, {39, 29, 41, 242});
-    rect(target, left, 60, 3, 29, accent);
-    label(target, font, title, left + 10.f, 68, 15, accent);
-    rect(target, tagX, 65, tagWidth - 3.f, 19, accent);
-    label(target, font, count, tagX + 3.f, 69, 12, ink);
+    rect(target, left, top, 938.f - left, 29, {39, 29, 41, 242});
+    rect(target, left, top, 3, 29, accent);
+    label(target, font, title, left + 10.f, top + 8.f, 15, accent);
+    rect(target, tagX, top + 5.f, tagWidth - 3.f, 19, accent);
+    label(target, font, count, tagX + 3.f, top + 9.f, 12, ink);
 }
 
 void abilityMeter(sf::RenderTarget& target, const sf::Font& font, const sf::String& key,
@@ -189,12 +215,16 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     label(target, font, "PUNTOS", 16, 9, 9, dim);
     const auto score = scoreNumber(combat.score());
     label(target, font, score, 16, 25, std::min(21u, 144u / static_cast<unsigned>(score.size())), gold);
+    const bool bossVisible = combat.battleship().has_value() && !combat.gameOver();
+    if (bossVisible)
+        bossMeter(target, font, combat);
+    const float noticeTop = bossVisible ? 91.f : 60.f;
     const auto combo = combat.combo();
     if (combo.kills >= 2 && !paused)
-        comboNotice(target, font, combo);
+        comboNotice(target, font, combo, noticeTop);
     const int milestone = combat.comboMilestone();
     if (milestone > 0 && !paused && !combat.gameOver())
-        milestoneNotice(target, font, milestone);
+        milestoneNotice(target, font, milestone, noticeTop);
 
     label(target, font, "VIDAS", 181, 9, 9, dim);
     sf::Sprite plane(lifeTexture);

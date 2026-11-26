@@ -22,6 +22,7 @@ private:
     sf::Texture coast;
     sf::Texture enemyAtlas;
     sf::Texture burstAtlas;
+    sf::Texture battleshipHull;
     std::vector<sf::Vertex> geometry;
     std::vector<sf::Vertex> textured;
     std::vector<sf::Vertex> foreground;

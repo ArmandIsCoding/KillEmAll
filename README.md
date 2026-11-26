@@ -37,7 +37,7 @@ Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno 
 
 Podés usar **precisión y guiado juntos**. La cámara lenta alcanza el vuelo, el desplazamiento de la costa, los enemigos, las balas de ambos bandos, la cadencia del cañón y las explosiones. También baja el ritmo de la música, los sonidos de combate y las fanfarrias.
 
-Con el **guiado**, los tiros del cañón y los misiles salen con su trayectoria habitual y enseguida doblan. Los que ya están en vuelo también buscan el blanco. El láser apunta directamente a la mira en el instante de cada pulso. La prioridad es **blindado, lancha, interceptor y explorador**. Si derribás al blanco, la mira salta al siguiente. Al soltar la barra, los proyectiles siguen desde el rumbo que llevaban y el próximo pulso vuelve a salir hacia adelante.
+Con el **guiado**, los tiros del cañón y los misiles salen con su trayectoria habitual y enseguida doblan. Los que ya están en vuelo también buscan el blanco. El láser apunta directamente a la mira en el instante de cada pulso. La prioridad es **torreta del acorazado, blindado, lancha, interceptor y explorador**. Si derribás al blanco, la mira salta al siguiente. Al soltar la barra, los proyectiles siguen desde el rumbo que llevaban y el próximo pulso vuelve a salir hacia adelante.
 
 La mira es **verde** si al blanco le queda más del 60 % de vida. Pasa a **ámbar** al llegar al 60 % o menos. Cuando le queda un cuarto de vida o menos, o está a un solo punto de caer, la mira **parpadea en rojo**. Al cambiar de blanco, toma de inmediato el color que corresponde a la vida del nuevo enemigo.
 
@@ -54,6 +54,22 @@ El **explorador** apunta a tu posición. El **interceptor** dispara en abanicos 
 Los aviones entran a distintas velocidades. Algunos exploradores cambian de altura con una curva en S. En las formaciones de pinza, un interceptor con escape fucsia corrige su rumbo hacia vos y lo mantiene durante la pasada final. Una señal en el borde anuncia por dónde entra. En pinzas alternas aparece desde la izquierda.
 
 Las **lanchas patrulleras** navegan por el agua y valen **300 puntos**. Su torreta sigue al avión y brilla al fijar el tiro. Si cambiás de altura en ese momento, el proyectil va hacia la posición anterior. Podés bajar a dispararles de frente, atacarlas con guiado o hundirlas con la onda de un blindado cercano.
+
+### El acorazado
+
+A los **42 segundos de vuelo**, una bocina anuncia al primer jefe. Entra por el agua desde la derecha. La barra **ACORAZADO** muestra su vida total y tiene tres tramos en el mismo orden que las torretas sobre cubierta. Cada torreta tiene **40 puntos de vida**. Al destruirla se apaga su tramo y cesa ese ataque.
+
+![El avión destruye las torretas del acorazado. La barra pierde un tramo con cada baja y el barco se hunde cuando cae la última.](docs/media/acorazado.gif)
+
+| Torreta | Cómo reconocer su ataque |
+| --- | --- |
+| Proa, a la izquierda | El cañón pesado fija tu posición y lanza un proyectil grande. Cambiá de altura después del destello. |
+| Centro, sobre el puente | El antiaéreo abre un abanico de cinco disparos. Podés pasar por los huecos o desactivarlo primero apuntando a la torreta más alta. |
+| Popa, a la derecha | La batería rápida lanza tres disparos seguidos hacia el punto que fijó antes de la ráfaga. |
+
+Apuntá a las torretas por encima del casco blindado. Cada una vale **250 puntos**. Cuando cae la última, el acorazado se hunde, libera una onda expansiva y suma **1500 puntos** más. Si sobrevive, a los 34 segundos de encuentro empieza a retirarse hacia la izquierda. El siguiente llega **55 segundos después** de que el anterior desaparezca.
+
+### Explosiones en cadena
 
 Cuando cae un blindado, un relámpago ilumina la costa y la cámara se sacude al ritmo de la explosión grave. La **onda expansiva ámbar** barre las balas y los orbes enemigos justo cuando el anillo los alcanza. Cerca del casco, el golpe puede destruir otro blindado intacto. En la periferia hace menos daño y puede rematar una nave averiada. Después de los 30 segundos, algunos convoyes traen dos blindados juntos. Derribá uno para encadenar la segunda explosión y sumar los puntos de ambas bajas.
 

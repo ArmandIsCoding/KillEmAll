@@ -16,6 +16,26 @@ constexpr float fullLaserRate = 130.f;
 constexpr float burstSpacing = 0.105f;
 constexpr float singleReload = 0.23f;
 
+struct BatteryStats
+{
+    sf::Vector2f mount;
+    float barrel;
+    float warning;
+    float firstShot;
+    float reload;
+};
+
+constexpr BatteryStats battery(TurretKind kind)
+{
+    switch (kind)
+    {
+        case TurretKind::Cannon: return {{-85.f, -13.f}, 23.f, 0.85f, 1.5f, 3.4f};
+        case TurretKind::Flak:   return {{ -8.f, -65.f}, 16.f, 0.65f, 2.3f, 3.7f};
+        case TurretKind::Burst:  return {{ 77.f, -39.f}, 19.f, 0.55f, 1.8f, 2.9f};
+    }
+    return {};
+}
+
 struct CannonPattern
 {
     int spread;
@@ -55,6 +75,7 @@ constexpr EnemyStats stats(EnemyKind kind)
         case EnemyKind::Striker: return {19.f, 4, 106.f, 47.f, 1.8f, 2.1f, 200};
         case EnemyKind::Gunship: return {27.f, 11, 68.f, 32.f, 0.9f, 2.2f, 500};
         case EnemyKind::PatrolBoat: return {22.f, 5, 86.f, 1.8f, 3.f, 2.6f, 300};
+        case EnemyKind::BattleshipTurret: return {15.f, Battleship::turretHealth, 0.f, 0.f, 0.f, 0.f, 250};
     }
     return {};
 }
@@ -155,6 +176,38 @@ int Enemy::maxHealth() const
     return stats(kind).health;
 }
 
+sf::Vector2f Battleship::mountPosition(TurretKind kind) const
+{
+    return position + battery(kind).mount;
+}
+
+bool Battleship::touchesHull(sf::Vector2f point, float radius) const
+{
+    if (sinking)
+        return false;
+    const auto local = point - position;
+    const sf::Vector2f nearest{std::clamp(local.x, -115.f, 115.f), std::clamp(local.y, -4.f, 9.f)};
+    return (local - nearest).lengthSquared() <= radius * radius;
+}
+
+sf::Vector2f Enemy::turretPivot() const
+{
+    return kind == EnemyKind::BattleshipTurret ? position : position + sf::Vector2f{-10.f, -5.f};
+}
+
+sf::Vector2f Enemy::turretMuzzle() const
+{
+    const float barrel = kind == EnemyKind::BattleshipTurret ? battery(turretKind).barrel : 15.f;
+    return turretPivot() + turretDirection() * barrel;
+}
+
+float Enemy::aimWarning() const
+{
+    if (kind != EnemyKind::BattleshipTurret || (turretKind == TurretKind::Burst && volleys % 3 != 0))
+        return 0.f;
+    return std::clamp(1.f - fireTimer / battery(turretKind).warning, 0.f, 1.f);
+}
+
 sf::Vector2f Enemy::turretDirection() const
 {
     const auto offset = turretTarget - turretPivot();
@@ -195,6 +248,23 @@ void Combat::setPowerInput(bool precisionHeld, bool guidanceHeld)
 {
     precision_.held = precisionHeld;
     guidance_.held = guidanceHeld;
+}
+
+const Enemy* Combat::bossTurret(TurretKind kind) const
+{
+    const auto match = std::find_if(enemies_.begin(), enemies_.end(), [kind](const Enemy& enemy) {
+        return enemy.kind == EnemyKind::BattleshipTurret && enemy.turretKind == kind && enemy.health > 0;
+    });
+    return match == enemies_.end() ? nullptr : &*match;
+}
+
+int Combat::bossHealth() const
+{
+    int health = 0;
+    for (const auto& enemy : enemies_)
+        if (enemy.kind == EnemyKind::BattleshipTurret)
+            health += enemy.health;
+    return health;
 }
 
 const Enemy* Combat::guidanceTarget() const
@@ -291,6 +361,8 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
             precision_.advance(realSlice, elapsed_, 4.f, 8.f);
             guidance_.advance(realSlice, elapsed_, 5.f, 10.f);
         }
+        else if (battleship_ && battleship_->sinking)
+            updateBattleship(slice);
         explosions_.erase(std::remove_if(explosions_.begin(), explosions_.end(), [this](const Explosion& effect) {
             if (effect.age < effect.duration)
                 return false;
@@ -302,7 +374,7 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
             }
             return true;
         }), explosions_.end());
-        if (gameOver() && explosions_.empty() && fadingTrails_.empty())
+        if (gameOver() && explosions_.empty() && fadingTrails_.empty() && !(battleship_ && battleship_->sinking))
             break;
 
         dt -= realSlice;
@@ -326,17 +398,22 @@ void Combat::step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffs
     elapsed_ += dt;
     distance_ += dt * (105.f + std::min(55.f, elapsed_ * 0.5f));
     grace_ = std::max(0.f, grace_ - dt);
-    nextFormation_ -= dt;
+    updateBattleship(dt);
+    // Keep a few aerial escorts during the encounter and give the battleship the water lane.
+    nextFormation_ -= battleship_ ? 0.35f * dt : dt;
     if (nextFormation_ <= 0.f)
     {
         spawnFormation();
         nextFormation_ += std::max(1.55f, 2.95f - elapsed_ * 0.022f);
     }
-    nextBoat_ -= dt;
-    if (nextBoat_ <= 0.f)
+    if (!battleship_)
     {
-        spawnBoat();
-        nextBoat_ += 13.5f - std::min(4.f, elapsed_ * 0.055f);
+        nextBoat_ -= dt;
+        if (nextBoat_ <= 0.f)
+        {
+            spawnBoat();
+            nextBoat_ += 13.5f - std::min(4.f, elapsed_ * 0.055f);
+        }
     }
     updatePickup(dt, playerPosition);
     updateEnemies(dt, playerPosition);
@@ -422,6 +499,11 @@ void Combat::updateEnemies(float dt, sf::Vector2f playerPosition)
     {
         enemy.age += dt;
         enemy.hitFlash = std::max(0.f, enemy.hitFlash - dt);
+        if (enemy.kind == EnemyKind::BattleshipTurret)
+        {
+            updateBossTurret(enemy, dt, playerPosition);
+            continue;
+        }
         if (enemy.kind == EnemyKind::PatrolBoat)
         {
             updateBoat(enemy, dt, playerPosition);
@@ -477,6 +559,8 @@ void Combat::fireEnemy(Enemy& enemy, sf::Vector2f playerPosition)
                               5.f, 0.f, 0.f});
             break;
         }
+        case EnemyKind::BattleshipTurret:
+            return; // The deck batteries have their own aim and burst timers.
     }
     ++enemy.volleys;
 }
@@ -508,6 +592,103 @@ void Combat::updateBoat(Enemy& boat, float dt, sf::Vector2f playerPosition)
     if (aim.lengthSquared() >= 125.f * 125.f)
         fireEnemy(boat, playerPosition);
     boat.fireTimer += type.reload;
+}
+
+void Combat::updateBattleship(float dt)
+{
+    if (!battleship_)
+    {
+        nextBoss_ -= dt;
+        if (nextBoss_ > 0.f)
+            return;
+
+        battleship_.emplace();
+        const auto type = stats(EnemyKind::BattleshipTurret);
+        for (auto kind : {TurretKind::Cannon, TurretKind::Flak, TurretKind::Burst})
+        {
+            const auto mount = battleship_->mountPosition(kind);
+            Enemy turret{EnemyKind::BattleshipTurret, mount, {}, type.radius, 0.f, type.health,
+                         mount.y, 0.f, battery(kind).firstShot, 0, 0.f};
+            turret.turretKind = kind;
+            enemies_.push_back(turret);
+        }
+    }
+    auto& ship = *battleship_;
+    if (ship.sinking)
+    {
+        ship.sinkAge += dt;
+        if (ship.sinkAge < Battleship::sinkDuration)
+            return;
+    }
+    else
+    {
+        ship.age += dt;
+        const float station = 665.f + 65.f * std::sin(0.22f * ship.age);
+        const float speed = ship.age < 34.f ? std::clamp((station - ship.position.x) * 0.8f, -85.f, 25.f) : -100.f;
+        ship.position.x += speed * dt;
+        ship.position.y = 509.f + 1.7f * std::sin(1.8f * ship.age);
+        if (ship.position.x > -130.f)
+            return;
+    }
+    enemies_.erase(std::remove_if(enemies_.begin(), enemies_.end(),
+        [](const Enemy& enemy) { return enemy.kind == EnemyKind::BattleshipTurret; }), enemies_.end());
+    battleship_.reset();
+    nextBoss_ = 55.f;
+}
+
+void Combat::updateBossTurret(Enemy& turret, float dt, sf::Vector2f playerPosition)
+{
+    const auto mount = battleship_->mountPosition(turret.turretKind);
+    turret.velocity = (mount - turret.position) / dt;
+    turret.position = mount;
+    const auto gun = battery(turret.turretKind);
+    const bool inBurst = turret.turretKind == TurretKind::Burst && turret.volleys % 3 != 0;
+    if (!inBurst && turret.fireTimer > gun.warning)
+        turret.turretTarget = playerPosition;
+    if (mount.x < 30.f || mount.x > width - 30.f)
+        return;
+
+    turret.fireTimer -= dt;
+    if (turret.fireTimer > 0.f)
+        return;
+    if ((playerPosition - mount).lengthSquared() < 95.f * 95.f)
+    {
+        turret.fireTimer = gun.warning + 0.1f;
+        return;
+    }
+
+    const auto muzzle = turret.turretMuzzle();
+    const auto direction = turret.turretDirection();
+    switch (turret.turretKind)
+    {
+        case TurretKind::Cannon:
+            shots_.push_back({ShotKind::EnemyOrb, muzzle, direction * 178.f, 7.f, 0.f, 0.f});
+            break;
+        case TurretKind::Flak:
+        {
+            const float aim = std::atan2(direction.y, direction.x);
+            for (int i = -2; i <= 2; ++i)
+                shots_.push_back({ShotKind::Enemy, muzzle, velocityAt(aim + 0.24f * i, 147.f), 4.f, 0.f, 0.f});
+            break;
+        }
+        case TurretKind::Burst:
+            shots_.push_back({ShotKind::Enemy, muzzle, direction * 265.f, 3.5f, 0.f, 0.f});
+            break;
+    }
+    ++turret.volleys;
+    turret.fireTimer += (turret.turretKind == TurretKind::Burst && turret.volleys % 3 != 0) ? 0.15f : gun.reload;
+}
+
+void Combat::sinkBattleship(unsigned chainId)
+{
+    auto& ship = *battleship_;
+    ship.sinking = true;
+    score_ += 1500;
+    explode(ship.position + sf::Vector2f{-67.f, -9.f}, ExplosionKind::Enemy);
+    explode(ship.position + sf::Vector2f{60.f, -12.f}, ExplosionKind::Enemy);
+    explode(ship.position, ExplosionKind::Gunship, chainId);
+    if (chainId == 0)
+        explosions_.back().comboKills = 1;
 }
 
 float Combat::nextPickupDelay()
@@ -761,6 +942,8 @@ void Combat::damage(Enemy& enemy, int amount, unsigned chainId)
                 milestones_.push_back(tally.kills);
         }
         explodeEnemy(enemy, chainId);
+        if (enemy.kind == EnemyKind::BattleshipTurret && battleship_ && !battleship_->sinking && bossHealth() == 0)
+            sinkBattleship(chainId);
     }
 }
 
@@ -772,33 +955,25 @@ void Combat::hitEnemies(Shot& shot)
     };
     const auto hit = std::find_if(enemies_.begin(), enemies_.end(),
                                   [&](const Enemy& enemy) { return touches(enemy, shot.radius); });
-    if (shot.kind == ShotKind::PlayerWave)
+    const bool onScreen = shot.position.x >= 0.f && shot.position.x <= width &&
+                          shot.position.y >= 0.f && shot.position.y <= height;
+    const bool hullHit = battleship_ && onScreen && battleship_->touchesHull(shot.position, shot.radius);
+    const bool timedOut = shot.kind == ShotKind::PlayerWave && shot.age >= 0.95f;
+    if (hit == enemies_.end() && !hullHit && !timedOut)
+        return;
+    shot.spent = true;
+    if (shot.kind == ShotKind::Player)
     {
-        if (hit == enemies_.end() && shot.age < 0.95f)
-            return;
-        shot.spent = true;
-        const bool onScreen = shot.position.x >= 0.f && shot.position.x <= width &&
-                              shot.position.y >= 0.f && shot.position.y <= height;
-        if (hit == enemies_.end() && !onScreen)
-            return;
-        explode(shot.position, ExplosionKind::Wave);
-        for (Enemy& enemy : enemies_)
-            if (touches(enemy, waveBlastRadius))
-                damage(enemy, 2);
-    }
-    else if (hit != enemies_.end())
-    {
-        shot.spent = true;
-        if (shot.kind == ShotKind::Missile)
-        {
-            explode(shot.position, ExplosionKind::Wave);
-            for (auto& enemy : enemies_)
-                if (touches(enemy, waveBlastRadius))
-                    damage(enemy, &enemy == &*hit ? 5 : 2);
-        }
-        else
+        if (hit != enemies_.end())
             damage(*hit, 1);
+        return;
     }
+    if (!onScreen && hit == enemies_.end())
+        return;
+    explode(shot.position, ExplosionKind::Wave);
+    for (auto enemy = enemies_.begin(); enemy != enemies_.end(); ++enemy)
+        if (touches(*enemy, waveBlastRadius))
+            damage(*enemy, shot.kind == ShotKind::Missile && enemy == hit ? 5 : 2);
 }
 
 void Combat::sweepGunshipShockwaves()
@@ -855,13 +1030,18 @@ void Combat::collide(sf::Vector2f playerPosition)
             hitPlayer(playerPosition);
         }
     }
+    if (battleship_ && battleship_->touchesHull(playerPosition, playerHitRadius))
+        hitPlayer(playerPosition);
     for (auto& enemy : enemies_)
     {
         if (enemy.health > 0 && !invulnerable() &&
             overlaps(enemy.position, enemy.radius, playerPosition, playerHitRadius))
         {
-            enemy.health = 0;
-            explodeEnemy(enemy);
+            if (enemy.kind != EnemyKind::BattleshipTurret)
+            {
+                enemy.health = 0;
+                explodeEnemy(enemy);
+            }
             hitPlayer(playerPosition);
         }
     }
@@ -875,6 +1055,6 @@ void Combat::collide(sf::Vector2f playerPosition)
     enemies_.erase(std::remove_if(enemies_.begin(), enemies_.end(), [](const Enemy& enemy) {
         const bool leftField = enemy.velocity.x <= 0.f ? enemy.position.x < -enemy.radius
                                                       : enemy.position.x > width + enemy.radius;
-        return enemy.health <= 0 || leftField;
+        return enemy.health <= 0 || (enemy.kind != EnemyKind::BattleshipTurret && leftField);
     }), enemies_.end());
 }
