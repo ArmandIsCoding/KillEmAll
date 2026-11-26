@@ -9,9 +9,11 @@
 #include <unordered_map>
 #include <vector>
 
-enum class EnemyKind { Scout, Striker, Gunship };
-enum class ShotKind { Player, PlayerWave, Enemy, EnemyOrb };
+enum class EnemyKind { Scout, Striker, Gunship, PatrolBoat };
+enum class ShotKind { Player, PlayerWave, Enemy, EnemyOrb, Missile };
+enum class WeaponMode { Cannon, Missiles, Laser };
 enum class ExplosionKind { Enemy, Gunship, Player, Wave };
+enum class FlightPath { Weave, CrossLane, Pursuit, Breakaway };
 
 struct Enemy
 {
@@ -27,7 +29,13 @@ struct Enemy
     unsigned volleys;
     float hitFlash;
     std::vector<unsigned> shockwavesHit{};
+    sf::Vector2f turretTarget{};
+    FlightPath flight = FlightPath::Weave;
 
+    static constexpr float boatAimWarning = 0.48f;
+    sf::Vector2f turretPivot() const { return position + sf::Vector2f{-10.f, -5.f}; }
+    sf::Vector2f turretDirection() const;
+    sf::Vector2f turretMuzzle() const { return turretPivot() + turretDirection() * 15.f; }
     int maxHealth() const;
 };
 
@@ -56,6 +64,7 @@ struct Shot
     float waveDriftX = 0.f;
     std::vector<TrailSample> trailHistory{};
 
+    bool isFriendly() const { return kind == ShotKind::Player || kind == ShotKind::PlayerWave || kind == ShotKind::Missile; }
     bool hasTrail() const { return kind == ShotKind::Player && (verticalAcceleration != 0.f || !trailHistory.empty()); }
     TrailSample trailSample(float lookback) const;
 };
@@ -64,6 +73,15 @@ struct FadingTrail
 {
     Shot shot;
     float age;
+};
+
+struct LaserPulse
+{
+    sf::Vector2f origin;
+    sf::Vector2f end;
+    float age = 0.f;
+    static constexpr float duration = 0.12f;
+    static constexpr float radius = 3.f;
 };
 
 struct FireRatePickup
@@ -121,6 +139,8 @@ public:
 
     const std::vector<Enemy>& enemies() const { return enemies_; }
     const std::vector<Shot>& shots() const { return shots_; }
+    const std::optional<LaserPulse>& laserPulse() const { return laserPulse_; }
+    WeaponMode weaponMode() const { return weaponMode_; }
     const std::vector<FadingTrail>& fadingTrails() const { return fadingTrails_; }
     const std::vector<Explosion>& explosions() const { return explosions_; }
     sf::Vector2f screenShakeOffset() const;
@@ -160,11 +180,15 @@ private:
 
     void step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffset);
     void spawnFormation();
+    void spawnBoat();
+    void updateBoat(Enemy& boat, float dt, sf::Vector2f playerPosition);
     void updateEnemies(float dt, sf::Vector2f playerPosition);
     void fireEnemy(Enemy& enemy, sf::Vector2f playerPosition);
     float nextPickupDelay();
     void updatePickup(float dt, sf::Vector2f playerPosition);
     void updateWeapon(float dt, sf::Vector2f muzzle);
+    float effectiveFireRate() const;
+    void fireLaser(sf::Vector2f muzzle);
     void fireVolley(sf::Vector2f muzzle);
     void updateShots(float dt);
     void collide(sf::Vector2f playerPosition);
@@ -191,6 +215,7 @@ private:
     std::optional<FireRatePickup> fireRatePickup_;
     std::minstd_rand pickupRandom_{std::random_device{}()};
     std::minstd_rand weaponRandom_{std::random_device{}()};
+    std::minstd_rand flightRandom_{std::random_device{}()};
     unsigned pickupsCollected_ = 0;
     float fireRateMultiplier_ = 1.f;
     float nextPickup_ = nextPickupDelay();
@@ -200,7 +225,11 @@ private:
     float distance_ = 0.f;
     float grace_ = 0.f;
     float nextFormation_ = 0.f;
+    float nextBoat_ = 9.f;
     float nextPulse_ = 0.f;
+    WeaponMode weaponMode_ = WeaponMode::Cannon;
+    float missilesSince_ = 0.f;
+    std::optional<LaserPulse> laserPulse_;
     int burstRemaining_ = 0;
     unsigned formation_ = 0;
     unsigned explosionSerial_ = 0;

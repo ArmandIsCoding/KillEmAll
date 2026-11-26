@@ -7,6 +7,7 @@
 #include <filesystem>
 
 class Combat;
+enum class WeaponMode;
 
 class GameAudio
 {
@@ -19,14 +20,15 @@ public:
     bool muted() const { return silent; }
 
 private:
+    void playWeapon(WeaponMode mode);
     void playGunshipBlast();
     void stopBattleSounds();
     void setTimeScale(float scale);
 
-    sf::SoundBuffer musicData, cannonData, blastData, gunshipBlastData, impactData, powerData, comboData;
+    sf::SoundBuffer musicData, cannonData, missileData, laserData, blastData, gunshipBlastData, impactData, powerData, comboData;
     sf::SoundBuffer fanfareFiveData, fanfareTenData;
     sf::SoundBuffer precisionReadyData, guidanceReadyData;
-    sf::Sound music, cannon, blast, wave, impact, upgrade, comboNote, fanfare;
+    sf::Sound music, weapon, blast, wave, impact, upgrade, comboNote, fanfare;
     sf::Sound precisionReady, guidanceReady;
     std::deque<sf::Sound> gunshipBlasts;
     std::deque<int> pendingComboNotes;

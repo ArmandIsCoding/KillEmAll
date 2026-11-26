@@ -182,23 +182,132 @@ namespace
 		}
 	}
 
+	void patrolBoat(Batch& batch, const Enemy& boat)
+	{
+		const Vec p{ std::round(boat.position.x), std::round(boat.position.y) };
+		const auto part = [&](float x, float y, float w, float h, Color color) {
+			rectangle(batch, p.x + x, p.y + y, w, h, color);
+		};
+		const Color dark{ 36, 31, 44 }, steel{ 79, 96, 102 }, plate{ 132, 152, 151 };
+		const Color rust{ 166, 77, 53 }, trim{ 240, 161, 90 }, glass{ 108, 201, 202 };
+		// Broken foam moves astern; the bow cuts a shorter, brighter crest.
+		for (int i = 0; i < 7; ++i)
+		{
+			const float along = wrap(i * 8.f + boat.age * 32.f, 56.f);
+			const float remaining = 1.f - along / 56.f;
+			const float ripple = 1.2f * std::sin(boat.age * 5.f + i);
+			part(26.f + along, 7.f + ripple, 2.f + remaining * 8.f, 2.f,
+				faded({ 185, 229, 213 }, remaining * 0.85f));
+			part(24.f + along, 10.f + along * 0.09f - ripple, 2.f + remaining * 5.f, 1.f,
+				faded({ 108, 195, 192 }, remaining));
+		}
+		// Stepped plating, waterline stripe and rivets follow the pointed bow.
+		part(-35, -2, 66, 5, dark);
+		part(-32, 3, 62, 3, dark);
+		part(-28, 6, 56, 3, dark);
+		part(-22, 9, 47, 2, dark);
+		part(-32, -1, 61, 2, plate);
+		part(-30, 1, 59, 3, boat.hitFlash > 0.f ? Color{ 255, 224, 161 } : steel);
+		part(-30, 1, 13, 1, { 199, 197, 163 });
+		part(13, 2, 14, 2, { 57, 72, 81 });
+		part(-25, 4, 53, 3, rust);
+		part(-23, 4, 50, 1, trim);
+		part(-24, 7, 49, 1, { 86, 52, 53 });
+		part(-21, 9, 35, 1, { 50, 81, 88 });
+		for (int x = -21; x < 24; x += 9)
+			part(static_cast<float>(x), 1, 2, 1, dark);
+		part(-35, 3, 6, 2, { 209, 240, 222 });
+		part(-31, 6, 8, 2, glass);
+
+		// Wheelhouse, bridge windows, mast and aft exhaust.
+		part(2, -15, 17, 13, dark);
+		part(0, -15, 21, 2, { 212, 190, 148 });
+		part(1, -13, 19, 1, steel);
+		part(3, -11, 6, 4, { 76, 138, 156 });
+		part(11, -11, 5, 4, { 76, 138, 156 });
+		part(4, -11, 3, 2, glass);
+		part(12, -11, 2, 2, glass);
+		part(1, -6, 18, 4, plate);
+		part(0, -3, 21, 1, steel);
+		part(11, -21, 2, 8, dark);
+		part(7, -19, 10, 1, plate);
+		part(13, -21, 7, 3, rust);
+		part(13, -21, 4, 1, trim);
+		part(21, -9, 5, 7, dark);
+		part(20, -10, 7, 2, rust);
+		part(21, -8, 2, 5, steel);
+		part(13, -6, 5, 5, rust);
+		part(15, -5, 1, 2, dark);
+		part(13, -6, 2, 1, { 250, 224, 168 });
+		part(16, -2, 2, 1, { 250, 224, 168 });
+
+		const auto pivot = boat.turretPivot();
+		const auto muzzle = boat.turretMuzzle();
+		const auto direction = boat.turretDirection();
+		streak(batch, pivot, muzzle + direction, direction, 2.5f, dark);
+		streak(batch, pivot, muzzle, direction, 1.3f, plate);
+		streak(batch, muzzle - direction * 5.f, muzzle, direction, 1.8f, steel);
+		part(-17, -7, 13, 5, dark);
+		part(-15, -8, 9, 4, steel);
+		part(-14, -8, 6, 1, plate);
+		if (boat.fireTimer <= Enemy::boatAimWarning)
+		{
+			const float charge = 1.f - boat.fireTimer / Enemy::boatAimWarning;
+			puff(batch, muzzle, 2.f + 3.f * charge, { 247, 65, 120 });
+			rectangle(batch, muzzle.x - 1.f, muzzle.y - 1.f, 2.f, 2.f, { 255, 243, 207 });
+		}
+	}
+
+	void hunterSignal(Batch& batch, const Enemy& enemy)
+	{
+		const float heading = enemy.velocity.x > 0.f ? 1.f : -1.f;
+		const Vec p = enemy.position;
+		if (p.x < 0.f || p.x > sceneWidth)
+		{
+			if (enemy.flight == FlightPath::Breakaway)
+				return;
+			const float edge = heading > 0.f ? 0.f : sceneWidth;
+			const float pulse = 0.65f + 0.35f * std::cos(enemy.age * 14.f);
+			for (float inset : { 4.f, 12.f })
+			{
+				const Vec tip{ edge + heading * (inset + 6.f), p.y };
+				for (float y : {-6.f, 6.f})
+				{
+					const Vec start = tip + Vec{ -heading * 6.f, y };
+					const Vec direction = (tip - start).normalized();
+					streak(batch, start, tip, direction, 2.5f, { 51, 28, 48 });
+					streak(batch, start, tip, direction, 1.3f, faded({ 255, 126, 188 }, pulse));
+				}
+			}
+			return;
+		}
+
+		const Vec exhaust = p - Vec{ heading * enemy.radius * 1.33f, enemy.velocity.y * 0.021f };
+		const float plume = 10.f + 3.f * std::sin(enemy.age * 33.f);
+		batch.insert(batch.end(), { { exhaust - Vec{ heading * plume, 0.f }, { 224, 69, 151, 180 } },
+									{ exhaust - Vec{ 0.f, 3.f }, { 255, 204, 151 } },
+									{ exhaust + Vec{ 0.f, 3.f }, { 255, 224, 172 } } });
+	}
+
 	void enemyFrame(Batch& batch, const Enemy& enemy, Color tint)
 	{
 		constexpr float frameWidth = 160.f;
 		constexpr float frameHeight = 96.f;
 		const float u = static_cast<int>(enemy.kind) * frameWidth;
 		const float scale = enemy.radius * 3.35f / frameWidth;
-		// The nose points left. A descending enemy therefore banks counter-clockwise on screen.
-		const float angle = std::clamp(-enemy.velocity.y * 0.001f, -0.15f, 0.15f);
+		const bool facingRight = enemy.velocity.x > 0.f;
+		const float angle = std::clamp((facingRight ? 1.f : -1.f) * enemy.velocity.y * 0.001f, -0.15f, 0.15f);
 		const Vec across{ scale * std::cos(angle), scale * std::sin(angle) };
 		const Vec down{ -across.y, across.x };
 		const Vec left = enemy.position - across * (frameWidth * 0.5f);
 		const Vec right = enemy.position + across * (frameWidth * 0.5f);
 		const Vec halfHeight = down * (frameHeight * 0.5f);
-		quad(batch, { left - halfHeight, tint,{ u, 0.f } },
-			{ right - halfHeight, tint,{ u + frameWidth, 0.f } },
-			{ right + halfHeight, tint,{ u + frameWidth, frameHeight } },
-			{ left + halfHeight, tint,{ u, frameHeight } });
+		const float leftU = facingRight ? u + frameWidth : u;
+		const float rightU = facingRight ? u : u + frameWidth;
+		quad(batch, { left - halfHeight, tint,{ leftU, 0.f } },
+			{ right - halfHeight, tint,{ rightU, 0.f } },
+			{ right + halfHeight, tint,{ rightU, frameHeight } },
+			{ left + halfHeight, tint,{ leftU, frameHeight } });
 	}
 
 	void guidanceReticle(Batch& batch, const Enemy& enemy)
@@ -295,7 +404,7 @@ namespace
 			previous = next;
 		}
 
-		if (shot.trailPower < 0.55f)
+		if (shot.trailPower < 0.40f)
 			return;
 
 		constexpr float spacing = 0.10f;
@@ -328,8 +437,34 @@ namespace
 	{
 		const Vec p = shot.position;
 		const float r = shot.radius;
-		const bool friendly = shot.kind == ShotKind::Player || shot.kind == ShotKind::PlayerWave;
+		const bool friendly = shot.isFriendly();
 		const Vec direction = shot.velocity != Vec{} ? shot.velocity.normalized() : Vec{ 1.f, 0.f };
+
+		if (shot.kind == ShotKind::Missile)
+		{
+			const Vec side = direction.perpendicular();
+			const Vec tail = p - direction * 11.f;
+			const float flameLength = 8.f + 3.f * std::cos(51.f * shot.age);
+			for (int i = 4; i > 0; --i)
+			{
+				const float lookback = i * 0.035f;
+				if (lookback > shot.age)
+					continue;
+				const auto past = shot.trailSample(lookback);
+				puff(batch, past.position - past.velocity.normalized() * 12.f, 2.f + i * 0.65f,
+				     faded({173, 189, 184}, 0.58f - 0.08f * i));
+			}
+			batch.insert(batch.end(), {
+				{tail + side * 3.f, {255, 186, 72}}, {tail - direction * flameLength, {251, 87, 42}},
+				{tail - side * 3.f, {255, 223, 126}},
+				{p + direction * 2.f, {105, 140, 144}}, {tail + side * 7.f, {222, 97, 55}},
+				{tail - side * 7.f, {157, 66, 48}}
+			});
+			bolt(batch, tail, p + direction * 10.f, direction, 4.f, {30, 49, 59});
+			bolt(batch, tail + direction * 2.f, p + direction * 9.f, direction, 2.8f, {200, 223, 206});
+			streak(batch, p + direction, p + direction * 4.f, direction, 2.8f, {241, 111, 59});
+			return;
+		}
 
 		if (shot.kind == ShotKind::EnemyOrb)
 		{
@@ -352,6 +487,19 @@ namespace
 		bolt(batch, tail, head, direction, r + 1.f, shadow);
 		bolt(batch, tail + direction * 2.f, head - direction, direction, r, rim);
 		bolt(batch, p - direction * (length * 0.52f), head - direction, direction, r * 0.48f, core);
+	}
+
+	void laserFlash(Batch& batch, const LaserPulse& pulse)
+	{
+		const Vec segment = pulse.end - pulse.origin;
+		if (segment.lengthSquared() == 0.f)
+			return;
+		const Vec direction = segment.normalized();
+		const float glow = 1.f - pulse.age / LaserPulse::duration;
+		streak(batch, pulse.origin, pulse.end, direction, 5.f + glow * 2.f, faded({63, 142, 255}, 0.33f * glow));
+		streak(batch, pulse.origin, pulse.end, direction, LaserPulse::radius, faded({92, 222, 255}, glow));
+		streak(batch, pulse.origin, pulse.end, direction, 1.3f, faded({245, 255, 254}, glow));
+		puff(batch, pulse.origin, 2.f + glow * 3.f, faded({205, 255, 255}, glow));
 	}
 
 	void gunshipShockwave(Batch& batch, const Explosion& effect)
@@ -510,6 +658,9 @@ void BattleRenderer::drawBackground(sf::RenderTarget& target, const Combat& comb
 	target.draw(landscape.data(), landscape.size(), sf::PrimitiveType::TriangleStrip, &coast);
 	geometry.clear();
 	water(geometry, elapsedSeconds);
+	for (const auto& enemy : combat.enemies())
+		if (enemy.flight == FlightPath::Pursuit || enemy.flight == FlightPath::Breakaway)
+			hunterSignal(geometry, enemy);
 	for (const Explosion& effect : combat.explosions())
 		if (effect.kind == ExplosionKind::Gunship)
 			gunshipFlash(geometry, effect);
@@ -528,13 +679,20 @@ void BattleRenderer::drawEnemies(sf::RenderTarget& target, const Combat& combat)
 {
 	geometry.clear();
 	textured.clear();
+	foreground.clear();
 	for (const Enemy& enemy : combat.enemies())
 	{
+		if (enemy.kind == EnemyKind::PatrolBoat)
+		{
+			patrolBoat(foreground, enemy);
+			continue;
+		}
 		enemyFrame(geometry, enemy, Color::White);
 		if (enemy.hitFlash > 0.f)
 			enemyFrame(textured, enemy, faded(Color::White, enemy.hitFlash / 0.09f));
 	}
 	sf::RenderStates states(&enemyAtlas);
+	drawBatch(target, foreground);
 	drawBatch(target, geometry, states);
 	states.blendMode = sf::BlendAdd;
 	drawBatch(target, textured, states);
@@ -556,14 +714,16 @@ void BattleRenderer::drawEffects(sf::RenderTarget& target, const Combat& combat)
 	}
 	// Hostile rounds stay readable over every flame, shockwave and friendly shot.
 	for (const Shot& shot : combat.shots())
-		if (shot.kind == ShotKind::Player || shot.kind == ShotKind::PlayerWave)
+		if (shot.isFriendly())
 			projectile(foreground, shot);
+	if (const auto& laser = combat.laserPulse())
+		laserFlash(foreground, *laser);
 	if (const auto& pickup = combat.fireRatePickup())
 		fireRateBadge(foreground, *pickup);
 	if (const auto* enemy = combat.guidanceTarget())
 		guidanceReticle(foreground, *enemy);
 	for (const Shot& shot : combat.shots())
-		if (shot.kind == ShotKind::Enemy || shot.kind == ShotKind::EnemyOrb)
+		if (!shot.isFriendly())
 			projectile(foreground, shot);
 	drawBatch(target, geometry);
 	drawBatch(target, textured, &burstAtlas);

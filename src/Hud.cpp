@@ -207,17 +207,31 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
         target.draw(plane);
     }
 
-    if (pickupNotice)
-        label(target, font, "CADENCIA +50%", 295, 9, 9, cyan);
-    else
-        label(target, font, powerNotice ? "ARMA MEJORADA" : "POTENCIA", 295, 9, 9, powerNotice ? gold : dim);
+    const WeaponMode mode = combat.weaponMode();
+    sf::String weaponName = U"CA\u00d1\u00d3N";
+    sf::Color weaponColor = gold;
+    if (mode == WeaponMode::Missiles)
+    {
+        weaponName = "MISILES";
+        weaponColor = {255, 148, 93};
+    }
+    else if (mode == WeaponMode::Laser)
+    {
+        weaponName = U"L\u00c1SER";
+        weaponColor = cyan;
+    }
+    label(target, font, weaponName, 295, 8, 12, weaponColor);
     for (int i = 0; i < 5; ++i)
     {
         const float x = 295.f + i * 24.f;
         const bool active = i < combat.power();
-        rect(target, x, 27, 20, 15, active ? (powerNotice ? gold : cyan) : seam);
-        rect(target, x + 2, active ? 38.f : 29.f, 16, active ? 2.f : 11.f, active ? steel : ink);
+        rect(target, x, 25, 20, 9, active ? weaponColor : seam);
+        rect(target, x + 2, active ? 31.f : 27.f, 16, active ? 1.f : 5.f, active ? steel : ink);
     }
+    if (powerNotice)
+        label(target, font, "ARMA MEJORADA", 295, 40, 8, ivory);
+    else if (pickupNotice)
+        label(target, font, mode == WeaponMode::Cannon ? "CADENCIA +50%" : "POTENCIADOR", 295, 40, 8, cyan);
 
     const bool flying = !paused && !combat.gameOver();
     const auto refillFlash = [flying](float age) {

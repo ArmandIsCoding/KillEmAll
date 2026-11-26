@@ -112,6 +112,7 @@ void Game::update(float dt)
     if (paused)
         return;
     const int oldPower = combat.power();
+    const WeaponMode oldWeapon = combat.weaponMode();
     const auto oldPickups = combat.pickupsCollected();
     const auto oldVolley = combat.volleysFired();
     const auto direction = flightDirection();
@@ -127,7 +128,7 @@ void Game::update(float dt)
         dt -= realSlice;
     }
     bestScore = std::max(bestScore, combat.score());
-    const bool leveledUp = combat.power() > oldPower;
+    const bool leveledUp = combat.power() > oldPower || combat.weaponMode() != oldWeapon;
     const bool pickedUp = combat.pickupsCollected() > oldPickups;
     powerNotice = leveledUp ? 1.6f : std::max(0.f, powerNotice - worldDt);
     pickupNotice = pickedUp ? 1.6f : std::max(0.f, pickupNotice - worldDt);
@@ -143,7 +144,7 @@ void Game::drawPlayer()
     const auto position = player.getPosition();
     window.draw(player);
 
-    if (muzzleFlash > 0.f)
+    if (muzzleFlash > 0.f && combat.weaponMode() != WeaponMode::Laser)
     {
         const auto tip = position + player.muzzleOffset();
         const float length = 8.f + 8.f * muzzleFlash / 0.055f;

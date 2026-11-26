@@ -1,14 +1,14 @@
 # ![Kill ’Em All — Costa industrial](docs/media/portada.png)
 
-Un *bullet hell* de desplazamiento horizontal hecho en **C++17 y SFML 3.1**. Tenés tres vidas, un avión remachado y una costa industrial que sigue pasando bajo las alas. El cañón dispara solo. Vos elegís entre perseguir una formación para sumar puntos o dejarla pasar para colarte entre sus balas.
+Un *bullet hell* de desplazamiento horizontal hecho en **C++17 y SFML 3.1**. Tenés tres vidas y un avión que dispara solo sobre una costa industrial. Podés alinearte con un convoy para encadenar explosiones, bajar a atacar una lancha o reservar el guiado para el interceptor que te viene siguiendo desde atrás.
 
 [Compilar y jugar en Windows](#compilar-en-visual-studio) · [Controles](#controles)
 
-![La mira del blindado pasa de verde a ámbar y parpadea en rojo antes de su derribo. Después marca al interceptor. Las barras dan un destello al recargarse.](docs/media/combate.gif)
+![El avión dispara misiles sobre una lancha, recoge un potenciador y cambia al láser. Un pulso guiado alcanza al convoy y desencadena varias explosiones.](docs/media/combate.gif)
 
-## Los primeros 45 segundos
+## Del cañón al láser
 
-El arma mejora por **tiempo de vuelo**. Derribar enemigos suma puntos. La costa sigue de largo mientras te queden vidas.
+El arma mejora por **tiempo de vuelo** y por los **potenciadores** que recogés. En la cabecera se ve qué arma tenés equipada. Estos son los tiempos de vuelo sin recoger potenciadores.
 
 | Tiempo en vuelo | Qué sale del cañón |
 | --- | --- |
@@ -16,11 +16,12 @@ El arma mejora por **tiempo de vuelo**. Derribar enemigos suma puntos. La costa 
 | 8 s | Salen tres proyectiles dorados por salva, cada uno con un ángulo que varía de un tiro al siguiente. |
 | 18 s | El cañón encadena dos salvas por ráfaga. |
 | 30 s | Se suman dos proyectiles verdes que zigzaguean y detonan al tocar un enemigo o tras casi un segundo de vuelo. La explosión también alcanza a los que vuelan cerca. |
-| 45 s | Potencia máxima. Cinco proyectiles dorados por salva, ráfagas triples y proyectiles ondulantes. |
+| 45 s | **Misiles**. Salen de a uno, alternando los dos lados del avión. Aceleran en vuelo, dejan humo y explotan al tocar un enemigo. El impacto hace 5 puntos de daño y los rivales cercanos reciben 2. |
+| Cerca de 99 s | **Láser**. Cada pulso cruza la pantalla en línea recta e inflige 8 puntos de daño a todos los enemigos que atraviesa. Cambiá de altura entre pulsos para alcanzar otra fila. |
 
-De vez en cuando cruza la pantalla un **potenciador turquesa con dos flechas**. Tocá uno con tu avión para multiplicar por **1,5** la cantidad de proyectiles que disparás por segundo. Las mejoras se acumulan hasta el fin de la partida. Con dos potenciadores, la cadencia es **2,25 veces** la habitual para ese nivel de potencia. Cuantos más recogés, más tarda en aparecer el siguiente.
+De vez en cuando cruza la pantalla un **potenciador turquesa con dos flechas**. Mientras usás el cañón, cada uno multiplica su cadencia por **1,5**. Cuando esa cadencia llegaría a 30 proyectiles por segundo, el avión equipa misiles automáticamente. Las mejoras adelantan también el paso al láser, después de al menos 12 segundos con misiles. En las armas avanzadas aumentan la frecuencia de disparo hasta un máximo de **un misil o un pulso cada 0,22 segundos**. Al completar la mejora del láser dejan de aparecer potenciadores.
 
-Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno vuelo y dejan una estela que se afina y se apaga detrás de ellos. Con más proyectiles por segundo, el ángulo de salida varía más, los arcos son más frecuentes y pronunciados y las estelas brillan más. Al llegar al nivel cinco, o antes si juntás suficientes potenciadores, las estelas también desprenden chispas doradas. Los verdes siguen su propio zigzag.
+Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno vuelo y dejan una estela que se afina y se apaga detrás de ellos. Con más proyectiles por segundo, el ángulo de salida varía más, los arcos son más frecuentes y las estelas brillan más. En la última etapa del cañón también desprenden chispas doradas. Los verdes siguen su propio zigzag.
 
 ## Controles
 
@@ -28,7 +29,7 @@ Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno 
 | --- | --- |
 | **WASD** o **flechas** | Moverte en ocho direcciones. |
 | **Shift** (mantener) | Activar el vuelo de precisión. Toda la acción pasa al **45 %** de su velocidad y se ilumina el punto vulnerable del avión. |
-| **Barra espaciadora** (mantener) | Guiar los disparos dorados y verdes hacia el enemigo más fuerte en pantalla. |
+| **Barra espaciadora** (mantener) | Guiar el cañón y los misiles o apuntar cada pulso del láser al enemigo más fuerte en pantalla. |
 | **P** | Pausar o reanudar. |
 | **M** | Silenciar o activar la música y los efectos. |
 | **Enter** o **R** | Volver a despegar después de perder las tres vidas. |
@@ -36,7 +37,7 @@ Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno 
 
 Podés usar **precisión y guiado juntos**. La cámara lenta alcanza el vuelo, el desplazamiento de la costa, los enemigos, las balas de ambos bandos, la cadencia del cañón y las explosiones. También baja el ritmo de la música, los sonidos de combate y las fanfarrias.
 
-Con el **guiado**, los tiros nuevos salen del cañón con su trayectoria habitual y enseguida doblan. Los que ya están en vuelo también buscan el blanco. La mira marca al enemigo que persiguen todos los tiros, con prioridad para el blindado, luego el interceptor y por último el explorador. Si lo derribás, la mira salta al siguiente blanco y los proyectiles giran hacia él. Al soltar la barra, la mira desaparece y los tiros retoman su trayectoria habitual desde el rumbo que llevaban, incluido el zigzag de los verdes.
+Con el **guiado**, los tiros del cañón y los misiles salen con su trayectoria habitual y enseguida doblan. Los que ya están en vuelo también buscan el blanco. El láser apunta directamente a la mira en el instante de cada pulso. La prioridad es **blindado, lancha, interceptor y explorador**. Si derribás al blanco, la mira salta al siguiente. Al soltar la barra, los proyectiles siguen desde el rumbo que llevaban y el próximo pulso vuelve a salir hacia adelante.
 
 La mira es **verde** si al blanco le queda más del 60 % de vida. Pasa a **ámbar** al llegar al 60 % o menos. Cuando le queda un cuarto de vida o menos, o está a un solo punto de caer, la mira **parpadea en rojo**. Al cambiar de blanco, toma de inmediato el color que corresponde a la vida del nuevo enemigo.
 
@@ -49,6 +50,10 @@ Al volver al **100 %**, precisión avisa con **dos campanadas ascendentes** y gu
 ![De izquierda a derecha, tu avión, el explorador rojo de 100 puntos, el interceptor de 200 y el blindado de 500.](docs/media/hangar.png)
 
 El **explorador** apunta a tu posición. El **interceptor** dispara en abanicos de tres. El **blindado** llega escoltado y alterna el ángulo de sus abanicos de siete proyectiles. El hueco por el que pasaste la primera vez cambia de lugar en la siguiente descarga.
+
+Los aviones entran a distintas velocidades. Algunos exploradores cambian de altura con una curva en S. En las formaciones de pinza, un interceptor con escape fucsia corrige su rumbo hacia vos y lo mantiene durante la pasada final. Una señal en el borde anuncia por dónde entra. En pinzas alternas aparece desde la izquierda.
+
+Las **lanchas patrulleras** navegan por el agua y valen **300 puntos**. Su torreta sigue al avión y brilla al fijar el tiro. Si cambiás de altura en ese momento, el proyectil va hacia la posición anterior. Podés bajar a dispararles de frente, atacarlas con guiado o hundirlas con la onda de un blindado cercano.
 
 Cuando cae un blindado, un relámpago ilumina la costa y la cámara se sacude al ritmo de la explosión grave. La **onda expansiva ámbar** barre las balas y los orbes enemigos justo cuando el anillo los alcanza. Cerca del casco, el golpe puede destruir otro blindado intacto. En la periferia hace menos daño y puede rematar una nave averiada. Después de los 30 segundos, algunos convoyes traen dos blindados juntos. Derribá uno para encadenar la segunda explosión y sumar los puntos de ambas bajas.
 

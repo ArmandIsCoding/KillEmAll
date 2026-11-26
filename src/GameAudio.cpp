@@ -5,17 +5,18 @@
 
 GameAudio::GameAudio(const std::filesystem::path& folder)
     : musicData(folder / "coast-patrol.wav"), cannonData(folder / "cannon.wav"),
+      missileData(folder / "missile.wav"), laserData(folder / "laser.wav"),
       blastData(folder / "blast.wav"), gunshipBlastData(folder / "gunship-blast.wav"), impactData(folder / "impact.wav"),
       powerData(folder / "power.wav"), comboData(folder / "combo-note.wav"),
       fanfareFiveData(folder / "combo-five.wav"), fanfareTenData(folder / "combo-ten.wav"),
       precisionReadyData(folder / "precision-ready.wav"), guidanceReadyData(folder / "guidance-ready.wav"),
-      music(musicData), cannon(cannonData), blast(blastData), wave(blastData),
+      music(musicData), weapon(cannonData), blast(blastData), wave(blastData),
       impact(impactData), upgrade(powerData), comboNote(comboData), fanfare(fanfareFiveData),
       precisionReady(precisionReadyData), guidanceReady(guidanceReadyData)
 {
     music.setLooping(true);
     music.setVolume(24.f);
-    cannon.setVolume(13.f);
+    weapon.setVolume(13.f);
     blast.setVolume(45.f);
     wave.setVolume(23.f);
     wave.setPitch(1.65f);
@@ -58,7 +59,7 @@ void GameAudio::setPlaying(bool playing)
 void GameAudio::stopBattleSounds()
 {
     music.pause();
-    cannon.stop();
+    weapon.stop();
     blast.stop();
     gunshipBlasts.clear();
     wave.stop();
@@ -80,7 +81,7 @@ void GameAudio::setTimeScale(float scale)
         return;
     timeScale_ = scale;
     music.setPitch(scale);
-    cannon.setPitch(scale);
+    weapon.setPitch(scale);
     blast.setPitch(scale);
     wave.setPitch(1.65f * scale);
     impact.setPitch(scale);
@@ -91,6 +92,21 @@ void GameAudio::setTimeScale(float scale)
     guidanceReady.setPitch(scale);
     for (auto& voice : gunshipBlasts)
         voice.setPitch(scale);
+}
+
+void GameAudio::playWeapon(WeaponMode mode)
+{
+    const sf::SoundBuffer* buffer = &cannonData;
+    if (mode == WeaponMode::Missiles)
+        buffer = &missileData;
+    else if (mode == WeaponMode::Laser)
+        buffer = &laserData;
+    if (&weapon.getBuffer() != buffer)
+    {
+        weapon.setBuffer(*buffer);
+        weapon.setPitch(timeScale_);
+    }
+    weapon.play();
 }
 
 void GameAudio::playGunshipBlast()
@@ -132,7 +148,7 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
                 pendingComboNotes.push_back(effect.comboKills);
         }
         if (running && combat.volleysFired() != lastVolley)
-            cannon.play();
+            playWeapon(combat.weaponMode());
         if (running && combat.lives() < lastLives)
             impact.play();
         if (running && weaponUpgraded)
