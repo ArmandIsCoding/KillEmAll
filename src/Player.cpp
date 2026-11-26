@@ -1,6 +1,9 @@
 #include "Player.hpp"
 
+#include <SFML/Graphics/RenderTarget.hpp>
+
 #include <algorithm>
+#include <cstdint>
 
 namespace
 {
@@ -46,6 +49,25 @@ const sf::Texture& Player::textureFor(sf::Vector2f direction) const
 	if (direction.x < 0.f)
 		return textures.retreat;
 	return textures.idle;
+}
+
+void Player::drawRecoveryGlow(sf::RenderTarget& target, float intensity) const
+{
+	sf::Sprite glow = getSprite();
+	sf::RenderStates light(sf::BlendAdd);
+	light.transform = getTransform();
+
+	// Offset copies of the current pose soften the light around the wings and tail.
+	const float spread = 1.f + 2.f * intensity;
+	glow.setColor({255, 203, 112, static_cast<std::uint8_t>(72.f * intensity)});
+	for (const sf::Vector2f offset : {sf::Vector2f{-spread, 0.f}, {spread, 0.f}, {0.f, -spread}, {0.f, spread}})
+	{
+		glow.setPosition(offset);
+		target.draw(glow, light);
+	}
+	glow.setPosition({});
+	glow.setColor({255, 244, 190, static_cast<std::uint8_t>(240.f * intensity)});
+	target.draw(glow, light);
 }
 
 void Player::update(sf::Vector2f direction, sf::Time elapsed, sf::Vector2f worldSize)

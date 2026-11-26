@@ -25,6 +25,7 @@ public:
     Player(PlayerTextures&&, sf::Vector2f) = delete;
 
     void update(sf::Vector2f direction, sf::Time elapsed, sf::Vector2f worldSize);
+    void drawRecoveryGlow(sf::RenderTarget& target, float intensity) const;
     sf::Vector2f muzzleOffset() const { return muzzle; }
 
 private:

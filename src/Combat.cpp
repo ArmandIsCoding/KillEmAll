@@ -11,6 +11,7 @@ constexpr float height = 540.f;
 constexpr float pi = 3.14159265f;
 constexpr float milestoneDuration = 1.4f;
 constexpr float lifeNoticeDuration = 1.6f;
+constexpr float lifeGlowDuration = 0.42f;
 constexpr float missileThreshold = 30.f;
 constexpr float laserThreshold = 65.f;
 constexpr float fullLaserRate = 130.f;
@@ -921,7 +922,7 @@ void Combat::hitPlayer(sf::Vector2f position)
     if (gameOver())
     {
         recoveryKills_ = 0;
-        lifeNoticeUntil_ = 0.f;
+        lastLifeRecoveryTime_ = -std::numeric_limits<float>::infinity();
     }
     grace_ = 2.f;
     explode(position, ExplosionKind::Player);
@@ -929,7 +930,12 @@ void Combat::hitPlayer(sf::Vector2f position)
 
 float Combat::lifeRecoveryFlash() const
 {
-    return std::clamp((lifeNoticeUntil_ - elapsed_) / lifeNoticeDuration, 0.f, 1.f);
+    return std::max(0.f, 1.f - (elapsed_ - lastLifeRecoveryTime_) / lifeNoticeDuration);
+}
+
+float Combat::lifeRecoveryGlow() const
+{
+    return std::max(0.f, 1.f - (elapsed_ - lastLifeRecoveryTime_) / lifeGlowDuration);
 }
 
 void Combat::damage(Enemy& enemy, int amount, unsigned chainId)
@@ -949,7 +955,7 @@ void Combat::damage(Enemy& enemy, int amount, unsigned chainId)
                 ++lives_;
                 ++lifeRecoveries_;
                 recoveryKills_ = 0;
-                lifeNoticeUntil_ = elapsed_ + lifeNoticeDuration;
+                lastLifeRecoveryTime_ = elapsed_;
             }
         }
         if (chainId != 0)

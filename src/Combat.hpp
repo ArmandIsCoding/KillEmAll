@@ -177,6 +177,7 @@ public:
     int recoveryKills() const { return recoveryKills_; }
     unsigned lifeRecoveries() const { return lifeRecoveries_; }
     float lifeRecoveryFlash() const;
+    float lifeRecoveryGlow() const;
     int power() const;
     unsigned int volleysFired() const { return volleysFired_; }
     float distance() const { return distance_; }
@@ -253,7 +254,7 @@ private:
     int lives_ = maxLives;
     int recoveryKills_ = 0;
     unsigned lifeRecoveries_ = 0;
-    float lifeNoticeUntil_ = 0.f;
+    float lastLifeRecoveryTime_ = -std::numeric_limits<float>::infinity();
     float elapsed_ = 0.f;
     float distance_ = 0.f;
     float grace_ = 0.f;

@@ -143,6 +143,9 @@ void Game::drawPlayer()
         return;
     const auto position = player.getPosition();
     window.draw(player);
+    const float recoveryGlow = combat.lifeRecoveryGlow();
+    if (!paused && recoveryGlow > 0.f)
+        player.drawRecoveryGlow(window, recoveryGlow);
 
     if (muzzleFlash > 0.f && combat.weaponMode() != WeaponMode::Laser)
     {

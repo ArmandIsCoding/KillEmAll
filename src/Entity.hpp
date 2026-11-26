@@ -10,6 +10,7 @@ public:
 protected:
     explicit Entity(const sf::Texture& texture);
     void setTexture(const sf::Texture& texture);
+    const sf::Sprite& getSprite() const { return sprite; }
 
 private:
     void draw(sf::RenderTarget& target, sf::RenderStates states) const override;
