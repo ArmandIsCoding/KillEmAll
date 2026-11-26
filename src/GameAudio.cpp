@@ -3,6 +3,11 @@
 
 #include <algorithm>
 
+namespace
+{
+constexpr float secondDronePitch = 1.22f;
+}
+
 GameAudio::GameAudio(const std::filesystem::path& folder)
     : musicData(folder / "coast-patrol.wav"), cannonData(folder / "cannon.wav"),
       missileData(folder / "missile.wav"), laserData(folder / "laser.wav"),
@@ -16,7 +21,8 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
       music(musicData), weapon(cannonData), blast(blastData), wave(blastData),
       impact(impactData), upgrade(powerData), comboNote(comboData), fanfare(fanfareFiveData),
       precisionReady(precisionReadyData), guidanceReady(guidanceReadyData), shipHorn(shipHornData),
-      lifeRecovered(lifeRecoveredData), lifeWarning(lifeWarningData), droneShot(droneData), hullImpact(hullImpactData)
+      lifeRecovered(lifeRecoveredData), lifeWarning(lifeWarningData),
+      droneShots{sf::Sound(droneData), sf::Sound(droneData)}, hullImpact(hullImpactData)
 {
     music.setLooping(true);
     music.setVolume(24.f);
@@ -33,7 +39,9 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
     shipHorn.setVolume(48.f);
     lifeRecovered.setVolume(65.f);
     lifeWarning.setVolume(58.f);
-    droneShot.setVolume(15.f);
+    droneShots[0].setVolume(15.f);
+    droneShots[1].setVolume(13.f);
+    droneShots[1].setPitch(secondDronePitch);
     hullImpact.setVolume(32.f);
 }
 
@@ -43,7 +51,7 @@ void GameAudio::restart()
     setTimeScale(1.f);
     music.stop();
     lastVolley = 0;
-    lastDroneShot = 0;
+    lastDroneShots = {};
     lastExplosion = 0;
     lastMilestone = 0;
     lastPrecisionRefill = 0;
@@ -72,7 +80,8 @@ void GameAudio::stopBattleSounds()
 {
     music.pause();
     weapon.stop();
-    droneShot.stop();
+    for (auto& shot : droneShots)
+        shot.stop();
     hullImpact.stop();
     blast.stop();
     gunshipBlasts.clear();
@@ -100,7 +109,8 @@ void GameAudio::setTimeScale(float scale)
     timeScale_ = scale;
     music.setPitch(scale);
     weapon.setPitch(scale);
-    droneShot.setPitch(scale);
+    droneShots[0].setPitch(scale);
+    droneShots[1].setPitch(secondDronePitch * scale);
     hullImpact.setPitch(scale);
     blast.setPitch(scale);
     wave.setPitch(1.65f * scale);
@@ -180,8 +190,6 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
         }
         if (running && combat.volleysFired() != lastVolley)
             playWeapon(combat.weaponMode());
-        if (running && combat.droneShotsFired() != lastDroneShot)
-            droneShot.play();
         if (running && weaponUpgraded)
             upgrade.play();
         if (running && combat.precisionRefills() > lastPrecisionRefill)
@@ -223,7 +231,14 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
     lastLifeRecovery = combat.lifeRecoveries();
     lastLifeWarning = combat.lifeRecoveryWarnings();
     lastVolley = combat.volleysFired();
-    lastDroneShot = combat.droneShotsFired();
+    const auto& drones = combat.drones();
+    for (std::size_t i = 0; i < droneShots.size(); ++i)
+    {
+        const unsigned fired = i < drones.size() ? drones[i].shotsFired : 0;
+        if (running && !silent && fired > lastDroneShots[i])
+            droneShots[i].play();
+        lastDroneShots[i] = fired;
+    }
     if (!combat.explosions().empty())
         lastExplosion = combat.explosions().back().seed;
 }

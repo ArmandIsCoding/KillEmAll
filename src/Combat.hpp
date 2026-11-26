@@ -85,6 +85,7 @@ struct Shot
     float lastGuidedAge = -1.f;
     float waveDriftX = 0.f;
     std::vector<TrailSample> trailHistory{};
+    unsigned droneIndex = 0;
 
     bool isFriendly() const { return kind != ShotKind::Enemy && kind != ShotKind::EnemyOrb; }
     bool hasTrail() const { return kind == ShotKind::Player && (verticalAcceleration != 0.f || !trailHistory.empty()); }
@@ -119,6 +120,8 @@ struct OrbitalDrone
     sf::Vector2f direction{1.f, 0.f};
     bool tracking = false;
     float muzzleFlash = 0.f;
+    float reload = 0.f;
+    unsigned shotsFired = 0;
 
     sf::Vector2f muzzle() const { return position + direction * 11.f; }
 };
@@ -149,6 +152,8 @@ class Combat
 public:
     static constexpr int maxLives = 3;
     static constexpr int killsPerLife = 50;
+    static constexpr unsigned secondDroneUpgrade = 3;
+    static constexpr unsigned maxDroneUpgrades = 4;
     static constexpr float playerHitRadius = 6.f;
     static constexpr float pickupRadius = 14.f;
     static constexpr float waveBlastRadius = 39.f;
@@ -161,7 +166,7 @@ public:
     float guidanceCharge() const { return static_cast<float>(guidance_.charge); }
     bool precisionActive() const { return !gameOver() && precision_.active(); }
     bool guidanceActive() const { return !gameOver() && guidance_.active(); }
-    const Enemy* guidanceTarget() const;
+    const Enemy* guidanceTarget(const Enemy* excluded = nullptr) const;
     bool precisionRecharging() const { return precision_.depleted; }
     bool guidanceRecharging() const { return guidance_.depleted; }
     unsigned precisionRefills() const { return precision_.refills; }
@@ -179,8 +184,9 @@ public:
     const std::vector<Shot>& shots() const { return shots_; }
     const std::optional<LaserPulse>& laserPulse() const { return laserPulse_; }
     WeaponMode weaponMode() const { return weaponMode_; }
-    const std::optional<OrbitalDrone>& drone() const { return drone_; }
-    unsigned droneShotsFired() const { return droneShotsFired_; }
+    const std::vector<OrbitalDrone>& drones() const { return drones_; }
+    unsigned droneUpgrades() const { return droneUpgrades_; }
+    unsigned droneShotsFired() const;
     const std::vector<FadingTrail>& fadingTrails() const { return fadingTrails_; }
     const std::vector<Explosion>& explosions() const { return explosions_; }
     sf::Vector2f screenShakeOffset() const;
@@ -242,7 +248,8 @@ private:
     void fireLaser(sf::Vector2f muzzle);
     void fireVolley(sf::Vector2f muzzle);
     void fireSalvo(sf::Vector2f muzzle);
-    void updateDrone(float dt, sf::Vector2f playerPosition);
+    const Enemy* droneTarget(sf::Vector2f position, const Enemy* claimed) const;
+    void updateDrones(float dt, sf::Vector2f playerPosition);
     void updateShots(float dt);
     void collide(sf::Vector2f playerPosition);
     void sweepGunshipShockwaves();
@@ -275,6 +282,8 @@ private:
     std::minstd_rand flightRandom_{std::random_device{}()};
     unsigned pickupsCollected_ = 0;
     float fireRateMultiplier_ = 1.f;
+    WeaponMode weaponMode_ = WeaponMode::Cannon;
+    unsigned droneUpgrades_ = 0;
     float nextPickup_ = nextPickupDelay();
     int score_ = 0;
     int lives_ = maxLives;
@@ -289,11 +298,8 @@ private:
     float nextFormation_ = 0.f;
     float nextBoat_ = 9.f;
     float nextPulse_ = 0.f;
-    WeaponMode weaponMode_ = WeaponMode::Cannon;
     float weaponSince_ = 0.f;
-    std::optional<OrbitalDrone> drone_;
-    float nextDroneShot_ = 0.f;
-    unsigned droneShotsFired_ = 0;
+    std::vector<OrbitalDrone> drones_;
     std::optional<LaserPulse> laserPulse_;
     int burstRemaining_ = 0;
     unsigned formation_ = 0;

@@ -289,15 +289,32 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
         weaponColor = {147, 213, 255};
     }
     label(target, font, weaponName, 295, 8, 12, weaponColor);
-    for (int i = 0; i < 5; ++i)
+    if (mode == WeaponMode::Arsenal)
     {
-        const float x = 295.f + i * 24.f;
-        const bool active = i < combat.power();
-        rect(target, x, 25, 20, 9, active ? weaponColor : seam);
-        rect(target, x + 2, active ? 31.f : 27.f, 16, active ? 1.f : 5.f, active ? steel : ink);
+        const unsigned upgrades = combat.droneUpgrades();
+        sf::String status;
+        if (upgrades < Combat::secondDroneUpgrade)
+            status = sf::String(U"2\u00ba ROBOT ") + std::to_string(upgrades) + "/" +
+                     std::to_string(Combat::secondDroneUpgrade);
+        else
+            status = upgrades == Combat::maxDroneUpgrades ? U"D\u00daO AL M\u00c1XIMO" : U"D\u00daO EN \u00d3RBITA";
+        label(target, font, status, 295, 25, 9, weaponColor);
+    }
+    else
+    {
+        for (int i = 0; i < 5; ++i)
+        {
+            const float x = 295.f + i * 24.f;
+            const bool active = i < combat.power();
+            rect(target, x, 25, 20, 9, active ? weaponColor : seam);
+            rect(target, x + 2, active ? 31.f : 27.f, 16, active ? 1.f : 5.f, active ? steel : ink);
+        }
     }
     if (powerNotice)
         label(target, font, "ARMA MEJORADA", 295, 40, 8, ivory);
+    else if (pickupNotice && mode == WeaponMode::Arsenal)
+        label(target, font, combat.droneUpgrades() == Combat::secondDroneUpgrade ? "+1 ROBOT" : "MAYOR CADENCIA",
+              295, 40, 8, gold);
     else if (pickupNotice)
         label(target, font, mode == WeaponMode::Cannon ? "CADENCIA +50%" : "POTENCIADOR", 295, 40, 8, cyan);
 

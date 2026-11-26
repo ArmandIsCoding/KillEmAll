@@ -18,6 +18,7 @@ constexpr float missileThreshold = 30.f;
 constexpr float laserThreshold = 65.f;
 constexpr float fullLaserRate = 130.f;
 constexpr float fullArsenalRate = 180.f;
+constexpr std::array<float, Combat::maxDroneUpgrades + 1> droneReloads{0.42f, 0.36f, 0.30f, 0.24f, 0.20f};
 constexpr float salvoOpeningTime = 0.24f;
 constexpr float burstSpacing = 0.105f;
 constexpr float singleReload = 0.23f;
@@ -345,7 +346,7 @@ int Combat::bossHealth() const
     return battleship_ ? battleship_->health : 0;
 }
 
-const Enemy* Combat::guidanceTarget() const
+const Enemy* Combat::guidanceTarget(const Enemy* excluded) const
 {
     if (!guidanceActive())
         return nullptr;
@@ -353,7 +354,7 @@ const Enemy* Combat::guidanceTarget() const
     const Enemy* best = nullptr;
     for (const auto& enemy : enemies_)
     {
-        if (!isVisibleTarget(enemy))
+        if (&enemy == excluded || !isVisibleTarget(enemy))
             continue;
         // Equal classes retain formation order instead of switching on every hit.
         if (!best || enemy.maxHealth() > best->maxHealth())
@@ -503,7 +504,7 @@ void Combat::step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffs
     updateShots(dt);
     collide(playerPosition);
     if (weaponMode_ == WeaponMode::Arsenal && !gameOver())
-        updateDrone(dt, playerPosition);
+        updateDrones(dt, playerPosition);
 }
 
 void Combat::spawnFormation()
@@ -802,6 +803,8 @@ void Combat::sinkBattleship(unsigned chainId)
 
 float Combat::nextPickupDelay()
 {
+    if (weaponMode_ == WeaponMode::Arsenal && droneUpgrades_ < maxDroneUpgrades)
+        return std::uniform_real_distribution<float>{8.f, 14.f}(pickupRandom_);
     // Space out successive upgrades as their effect compounds.
     return std::uniform_real_distribution<float>{5.f, 9.f}(pickupRandom_) * fireRateMultiplier_;
 }
@@ -810,7 +813,8 @@ void Combat::updatePickup(float dt, sf::Vector2f playerPosition)
 {
     if (!fireRatePickup_)
     {
-        if (weaponMode_ == WeaponMode::Arsenal && effectiveFireRate() >= fullArsenalRate)
+        if (weaponMode_ == WeaponMode::Arsenal && droneUpgrades_ == maxDroneUpgrades &&
+            effectiveFireRate() >= fullArsenalRate)
             return;
         nextPickup_ -= dt;
         if (nextPickup_ > 0.f)
@@ -833,6 +837,15 @@ void Combat::updatePickup(float dt, sf::Vector2f playerPosition)
         fireRateMultiplier_ *= 1.5f;
         if (weaponMode_ == WeaponMode::Cannon)
             nextPulse_ /= 1.5f;
+        if (weaponMode_ == WeaponMode::Arsenal && droneUpgrades_ < maxDroneUpgrades)
+        {
+            const float previousReload = droneReloads[droneUpgrades_];
+            ++droneUpgrades_;
+            for (auto& drone : drones_)
+                drone.reload *= droneReloads[droneUpgrades_] / previousReload;
+            if (droneUpgrades_ == secondDroneUpgrade)
+                drones_.emplace_back();
+        }
     }
     else if (pickup.position.x >= -pickupRadius)
         return;
@@ -870,7 +883,8 @@ void Combat::updateWeapon(float dt, sf::Vector2f muzzle)
         {
             weaponMode_ = WeaponMode::Arsenal;
             weaponSince_ = elapsed_;
-            drone_.emplace();
+            drones_.emplace_back();
+            nextPickup_ = std::min(nextPickup_, nextPickupDelay());
             nextPulse_ = 0.f;
         }
     }
@@ -1007,49 +1021,72 @@ void Combat::fireSalvo(sf::Vector2f muzzle)
     }
 }
 
-void Combat::updateDrone(float dt, sf::Vector2f playerPosition)
+unsigned Combat::droneShotsFired() const
 {
-    auto& drone = *drone_;
-    const float angle = 2.7f * (elapsed_ - weaponSince_);
-    drone.position = {
-        std::clamp(playerPosition.x + 50.f * std::cos(angle), 12.f, width - 12.f),
-        std::clamp(playerPosition.y + 32.f * std::sin(angle), 12.f, height - 12.f)
-    };
-    drone.muzzleFlash = std::max(0.f, drone.muzzleFlash - dt / 0.08f);
-    nextDroneShot_ = std::max(0.f, nextDroneShot_ - dt);
+    unsigned total = 0;
+    for (const auto& drone : drones_)
+        total += drone.shotsFired;
+    return total;
+}
 
-    const Enemy* target = guidanceTarget();
-    if (!target)
+const Enemy* Combat::droneTarget(sf::Vector2f position, const Enemy* claimed) const
+{
+    if (guidanceActive())
+        return guidanceTarget(claimed);
+    const Enemy* closest = nullptr;
+    float closestDistance = std::numeric_limits<float>::infinity();
+    for (const auto& enemy : enemies_)
     {
-        float closest = std::numeric_limits<float>::infinity();
-        for (const auto& enemy : enemies_)
+        if (&enemy == claimed || !isVisibleTarget(enemy))
+            continue;
+        const float distance = (enemy.position - position).lengthSquared();
+        if (distance < closestDistance)
         {
-            if (!isVisibleTarget(enemy))
-                continue;
-            const float distance = (enemy.position - drone.position).lengthSquared();
-            if (distance < closest)
-            {
-                closest = distance;
-                target = &enemy;
-            }
+            closestDistance = distance;
+            closest = &enemy;
         }
     }
-    drone.tracking = target && target->position != drone.position;
-    if (!drone.tracking)
-        return;
+    return closest;
+}
 
-    drone.direction = (target->position - drone.position).normalized();
-    if (nextDroneShot_ > 0.f)
-        return;
-    shots_.push_back({ShotKind::Drone, drone.muzzle(), drone.direction * 570.f, 2.4f, 0.f, 0.f});
-    ++droneShotsFired_;
-    drone.muzzleFlash = 1.f;
-    nextDroneShot_ = 0.42f;
+void Combat::updateDrones(float dt, sf::Vector2f playerPosition)
+{
+    const float angle = 2.7f * (elapsed_ - weaponSince_);
+    // Compress the orbit near a screen edge so the drones stay opposite each other.
+    constexpr float margin = 12.f;
+    const sf::Vector2f center{std::clamp(playerPosition.x, margin, width - margin),
+                              std::clamp(playerPosition.y, margin, height - margin)};
+    const float radiusX = std::min({50.f, center.x - margin, width - margin - center.x});
+    const float radiusY = std::min({32.f, center.y - margin, height - margin - center.y});
+    const sf::Vector2f offset{radiusX * std::cos(angle), radiusY * std::sin(angle)};
+    const Enemy* claimed = nullptr;
+    for (unsigned i = 0; i < drones_.size(); ++i)
+    {
+        auto& drone = drones_[i];
+        drone.position = center + (i == 0 ? offset : -offset);
+        drone.muzzleFlash = std::max(0.f, drone.muzzleFlash - dt / 0.08f);
+        drone.reload = std::max(0.f, drone.reload - dt);
+
+        const auto* target = droneTarget(drone.position, claimed);
+        claimed = target;
+        drone.tracking = target && target->position != drone.position;
+        if (!drone.tracking)
+            continue;
+        drone.direction = (target->position - drone.position).normalized();
+        if (drone.reload > 0.f)
+            continue;
+        shots_.push_back({ShotKind::Drone, drone.muzzle(), drone.direction * 570.f, 2.4f, 0.f, 0.f});
+        shots_.back().droneIndex = i;
+        ++drone.shotsFired;
+        drone.muzzleFlash = 1.f;
+        drone.reload = droneReloads[droneUpgrades_];
+    }
 }
 
 void Combat::updateShots(float dt)
 {
-    const auto* target = guidanceTarget();
+    const auto* primary = guidanceTarget();
+    const auto* secondary = primary && drones_.size() > 1 ? guidanceTarget(primary) : nullptr;
     for (auto& shot : shots_)
     {
         if (shot.kind == ShotKind::Missile)
@@ -1059,6 +1096,7 @@ void Combat::updateShots(float dt)
             shot.velocity *= std::min(630.f, speed + 760.f * dt) / speed;
         }
         // Leave a short run out of the muzzle so the spread and wave patterns remain visible.
+        const auto* target = shot.droneIndex == 1 ? secondary : primary;
         const bool steering = target && shot.isFriendly() && shot.age >= 0.05f;
         if (steering)
             steerShot(shot, *target, dt);

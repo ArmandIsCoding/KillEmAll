@@ -600,34 +600,45 @@ namespace
 		}
 	}
 
+	struct DroneColors
+	{
+		Color body, shadow, light;
+	};
+
+	constexpr std::array<DroneColors, 2> droneColors{{
+		{ Color::White, { 31, 111, 146 }, { 101, 232, 249 } },
+		{ { 196, 255, 168 }, { 47, 125, 75 }, { 165, 255, 124 } }
+	}};
+
 	void drawDrone(sf::RenderTarget& target, Batch& equipment, const sf::Texture& hull,
-		const OrbitalDrone& drone, float time)
+		const OrbitalDrone& drone, const DroneColors& colors, float time)
 	{
 		const Vec p{ std::round(drone.position.x), std::round(drone.position.y) };
 		sf::Sprite body(hull);
 		body.setOrigin({ 13.f, 11.f });
 		body.setPosition(p);
+		body.setColor(colors.body);
 		target.draw(body);
 
 		for (const float x : { -8.f, 10.f })
 		{
 			const float flame = 3.5f + 1.5f * std::sin(31.f * time + x);
-			rectangle(equipment, p.x + x - 1.f, p.y + 7.f, 2.f, flame, { 53, 167, 197 });
-			rectangle(equipment, p.x + x - 1.f, p.y + 7.f, 2.f, 2.f, { 186, 252, 230 });
+			rectangle(equipment, p.x + x - 1.f, p.y + 7.f, 2.f, flame, colors.shadow);
+			rectangle(equipment, p.x + x - 1.f, p.y + 7.f, 2.f, 2.f, colors.light);
 		}
 		const Vec aim = drone.direction;
 		const Vec muzzle = drone.muzzle();
 		streak(equipment, drone.position, muzzle, aim, 2.4f, { 30, 38, 51 });
 		streak(equipment, drone.position, muzzle - aim, aim, 1.4f, { 153, 163, 158 });
 		streak(equipment, muzzle - aim * 4.f, muzzle - aim, aim, 1.4f,
-			drone.tracking ? Color{ 85, 222, 241 } : Color{ 67, 96, 111 });
+			drone.tracking ? colors.light : Color{ 67, 96, 111 });
 		rectangle(equipment, p.x - 2.f, p.y - 1.f, 4.f, 3.f, { 52, 58, 69 });
-		rectangle(equipment, p.x - 1.f, p.y - 1.f, 2.f, 1.f, { 241, 184, 100 });
+		rectangle(equipment, p.x - 1.f, p.y - 1.f, 3.f, 2.f, colors.light);
 		if (drone.muzzleFlash > 0.f)
 		{
 			const float reach = 2.f + 5.f * drone.muzzleFlash;
 			bolt(equipment, muzzle - aim * 2.f, muzzle + aim * reach, aim, 2.4f,
-				faded({ 133, 243, 255 }, drone.muzzleFlash));
+				faded(colors.light, drone.muzzleFlash));
 		}
 	}
 
@@ -652,9 +663,10 @@ namespace
 
 		if (shot.kind == ShotKind::Drone)
 		{
+			const auto& colors = droneColors[shot.droneIndex];
 			const Vec tail = p - direction * 7.f;
-			bolt(batch, tail, p + direction * 2.f, direction, 2.4f, { 31, 111, 146 });
-			bolt(batch, tail + direction, p + direction * 2.f, direction, 1.65f, { 101, 232, 249 });
+			bolt(batch, tail, p + direction * 2.f, direction, 2.4f, colors.shadow);
+			bolt(batch, tail + direction, p + direction * 2.f, direction, 1.65f, colors.light);
 			streak(batch, p - direction * 3.f, p, direction, 0.85f, { 231, 255, 241 });
 			return;
 		}
@@ -928,8 +940,12 @@ void BattleRenderer::drawEffects(sf::RenderTarget& target, const Combat& combat)
 	geometry.clear();
 	textured.clear();
 	foreground.clear();
-	if (const auto& drone = combat.drone(); drone && !combat.gameOver())
-		drawDrone(target, geometry, droneHull, *drone, combat.elapsed());
+	if (!combat.gameOver())
+	{
+		const auto& drones = combat.drones();
+		for (std::size_t i = 0; i < drones.size(); ++i)
+			drawDrone(target, geometry, droneHull, drones[i], droneColors[i], combat.elapsed());
+	}
 	for (const Explosion& effect : combat.explosions())
 	{
 		if (effect.kind == ExplosionKind::Gunship)

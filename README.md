@@ -28,9 +28,11 @@ El arma mejora por **tiempo de vuelo** y por los **potenciadores** que recogés.
 
 De vez en cuando cruza la pantalla un **potenciador turquesa con dos flechas**. Mientras usás el cañón, cada uno multiplica su cadencia por **1,5**. Cuando esa cadencia llegaría a 30 proyectiles por segundo, el avión equipa misiles automáticamente. Las mejoras adelantan también el paso al láser, después de al menos 12 segundos con misiles. Los misiles y el láser pueden disparar hasta una vez cada **0,22 segundos**.
 
-Con el láser equipado, el salto al arsenal tarda entre **22 y 55 segundos de vuelo**, según las mejoras que lleves. Los potenciadores posteriores aceleran la salva frontal hasta una cada **0,26 segundos**. El robot apunta al enemigo visible más cercano, incluso si viene desde atrás. Si el blanco cae, busca otro, y si el cielo está despejado, sigue orbitando hasta que aparezca un objetivo.
+Con el láser equipado, el salto al arsenal tarda entre **22 y 55 segundos de vuelo**, según las mejoras que lleves. El primer robot apunta al enemigo visible más cercano, incluso si viene desde atrás. Los potenciadores que recogés con el Arsenal aceleran la salva frontal hasta una cada **0,26 segundos** y mejoran a los robots.
 
-![Las salvas ámbar se abren hacia adelante mientras el robot orbital apunta sus disparos celestes a enemigos a otra altura.](docs/media/arsenal.gif)
+Debajo de **ARSENAL** podés ver cuánto falta para el segundo robot. Con el **tercer potenciador** aparece un compañero verde que orbita del lado opuesto al celeste. Cada uno apunta a un enemigo distinto. Si queda un solo blanco, el celeste sigue disparando y el verde espera al próximo. El intervalo entre disparos de cada robot baja de **0,42 s** a **0,36**, **0,30** y **0,24 s** con las primeras tres mejoras. Con la **cuarta** los dos disparan cada **0,20 s**.
+
+![El robot celeste y el verde orbitan en lados opuestos y disparan a blancos distintos mientras la salva del avión se abre hacia adelante.](docs/media/arsenal.gif)
 
 Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno vuelo y dejan una estela que se afina y se apaga detrás de ellos. Con más proyectiles por segundo, el ángulo de salida varía más, los arcos son más frecuentes y las estelas brillan más. En la última etapa del cañón también desprenden chispas doradas. Los verdes siguen su propio zigzag.
 
@@ -40,7 +42,7 @@ Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno 
 | --- | --- |
 | **WASD** o **flechas** | Moverte en ocho direcciones. |
 | **Shift** (mantener) | Activar el vuelo de precisión. Toda la acción pasa al **45 %** de su velocidad y se ilumina el punto vulnerable del avión. |
-| **Barra espaciadora** (mantener) | Guiar los disparos del cañón, los misiles y las salvas del arsenal, o apuntar el láser al enemigo más fuerte en pantalla. El robot también prioriza ese blanco. |
+| **Barra espaciadora** (mantener) | Guiar los disparos del cañón, los misiles y las salvas del arsenal, o apuntar el láser al enemigo más fuerte en pantalla. El robot celeste prioriza ese blanco y el verde apunta al siguiente en prioridad. |
 | **P** | Pausar o reanudar. |
 | **M** | Silenciar o activar la música y los efectos. |
 | **Enter** o **R** | Volver a despegar después de perder las tres vidas. |
