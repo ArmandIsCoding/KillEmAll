@@ -131,6 +131,8 @@ struct Combo
 class Combat
 {
 public:
+    static constexpr int maxLives = 3;
+    static constexpr int killsPerLife = 50;
     static constexpr float playerHitRadius = 6.f;
     static constexpr float pickupRadius = 14.f;
     static constexpr float waveBlastRadius = 39.f;
@@ -172,6 +174,8 @@ public:
     unsigned comboMilestoneSerial() const { return comboMilestone() ? finishedMilestones_ + 1 : 0; }
     int bestCombo() const { return bestCombo_; }
     int lives() const { return lives_; }
+    int recoveryKills() const { return recoveryKills_; }
+    float lifeRecoveryFlash() const;
     int power() const;
     unsigned int volleysFired() const { return volleysFired_; }
     float distance() const { return distance_; }
@@ -245,7 +249,9 @@ private:
     float fireRateMultiplier_ = 1.f;
     float nextPickup_ = nextPickupDelay();
     int score_ = 0;
-    int lives_ = 3;
+    int lives_ = maxLives;
+    int recoveryKills_ = 0;
+    float lifeNoticeUntil_ = 0.f;
     float elapsed_ = 0.f;
     float distance_ = 0.f;
     float grace_ = 0.f;

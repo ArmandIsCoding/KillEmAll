@@ -39,7 +39,6 @@ private:
     unsigned lastMilestone = 0;
     unsigned lastPrecisionRefill = 0;
     unsigned lastGuidanceRefill = 0;
-    int lastLives = 3;
     bool running = false;
     bool silent = false;
     bool bossPresent = false;

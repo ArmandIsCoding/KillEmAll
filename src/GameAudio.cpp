@@ -41,7 +41,6 @@ void GameAudio::restart()
     lastPrecisionRefill = 0;
     lastGuidanceRefill = 0;
     bossPresent = false;
-    lastLives = 3;
     setPlaying(true);
 }
 
@@ -151,13 +150,13 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
                 blast.play();
             else if (running && effect.kind == ExplosionKind::Wave)
                 wave.play();
+            else if (running && effect.kind == ExplosionKind::Player)
+                impact.play();
             if (effect.comboKills > 0)
                 pendingComboNotes.push_back(effect.comboKills);
         }
         if (running && combat.volleysFired() != lastVolley)
             playWeapon(combat.weaponMode());
-        if (running && combat.lives() < lastLives)
-            impact.play();
         if (running && weaponUpgraded)
             upgrade.play();
         if (running && combat.precisionRefills() > lastPrecisionRefill)
@@ -187,5 +186,4 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
     lastVolley = combat.volleysFired();
     if (!combat.explosions().empty())
         lastExplosion = combat.explosions().back().seed;
-    lastLives = combat.lives();
 }

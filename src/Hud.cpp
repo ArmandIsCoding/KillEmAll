@@ -230,11 +230,22 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     sf::Sprite plane(lifeTexture);
     plane.setOrigin(sf::Vector2f(lifeTexture.getSize()) * 0.5f);
     plane.setScale({0.29f, 0.29f});
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < Combat::maxLives; ++i)
     {
-        plane.setPosition({193.f + i * 31.f, 36.f});
+        plane.setPosition({193.f + i * 31.f, 31.f});
         plane.setColor(i < combat.lives() ? sf::Color::White : sf::Color{108, 137, 145, 135});
         target.draw(plane);
+    }
+    if (!combat.gameOver())
+    {
+        const float flash = combat.lifeRecoveryFlash();
+        if (flash > 0.f)
+            label(target, font, "+1 VIDA", 181, 43, 9, flash > 0.8f ? ivory : cyan);
+        else if (combat.lives() < Combat::maxLives)
+        {
+            const auto count = std::to_string(combat.recoveryKills()) + "/" + std::to_string(Combat::killsPerLife);
+            label(target, font, "BAJAS " + count, 181, 44, 8, cyan);
+        }
     }
 
     const WeaponMode mode = combat.weaponMode();
