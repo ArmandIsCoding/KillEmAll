@@ -12,7 +12,7 @@ Al recuperar la vida, el avión da un destello dorado al mismo tiempo que aparec
 
 ![El avión dispara misiles sobre una lancha, recoge un potenciador y cambia al láser. Un pulso guiado alcanza al convoy y desencadena varias explosiones.](docs/media/combate.gif)
 
-## Del cañón al láser
+## Del cañón al arsenal
 
 El arma mejora por **tiempo de vuelo** y por los **potenciadores** que recogés. En la cabecera se ve qué arma tenés equipada. Estos son los tiempos de vuelo sin recoger potenciadores.
 
@@ -23,9 +23,14 @@ El arma mejora por **tiempo de vuelo** y por los **potenciadores** que recogés.
 | 18 s | El cañón encadena dos salvas por ráfaga. |
 | 30 s | Se suman dos proyectiles verdes que zigzaguean y detonan al tocar un enemigo o tras casi un segundo de vuelo. La explosión también alcanza a los que vuelan cerca. |
 | 45 s | **Misiles**. Salen de a uno, alternando los dos lados del avión. Aceleran en vuelo, dejan humo y explotan al tocar un enemigo. El impacto hace 5 puntos de daño y los rivales cercanos reciben 2. |
-| Cerca de 99 s | **Láser**. Cada pulso cruza la pantalla en línea recta e inflige 8 puntos de daño a todos los enemigos que atraviesa. Cambiá de altura entre pulsos para alcanzar otra fila. |
+| Cerca de 99 s | **Láser**. Cada pulso inflige 8 puntos de daño a los enemigos que atraviesa. El acorazado detiene el haz en el punto de impacto. |
+| Cerca de 153 s | **Arsenal**. Siete proyectiles salen juntos por la nariz del avión y se abren de a poco. Un robot orbital cubre otros ángulos con su propio cañón. |
 
-De vez en cuando cruza la pantalla un **potenciador turquesa con dos flechas**. Mientras usás el cañón, cada uno multiplica su cadencia por **1,5**. Cuando esa cadencia llegaría a 30 proyectiles por segundo, el avión equipa misiles automáticamente. Las mejoras adelantan también el paso al láser, después de al menos 12 segundos con misiles. En las armas avanzadas aumentan la frecuencia de disparo hasta un máximo de **un misil o un pulso cada 0,22 segundos**. Al completar la mejora del láser dejan de aparecer potenciadores.
+De vez en cuando cruza la pantalla un **potenciador turquesa con dos flechas**. Mientras usás el cañón, cada uno multiplica su cadencia por **1,5**. Cuando esa cadencia llegaría a 30 proyectiles por segundo, el avión equipa misiles automáticamente. Las mejoras adelantan también el paso al láser, después de al menos 12 segundos con misiles. Los misiles y el láser pueden disparar hasta una vez cada **0,22 segundos**.
+
+Con el láser equipado, el salto al arsenal tarda entre **22 y 55 segundos de vuelo**, según las mejoras que lleves. Los potenciadores posteriores aceleran la salva frontal hasta una cada **0,26 segundos**. El robot apunta al enemigo visible más cercano, incluso si viene desde atrás. Si el blanco cae, busca otro, y si el cielo está despejado, sigue orbitando hasta que aparezca un objetivo.
+
+![Las salvas ámbar se abren hacia adelante mientras el robot orbital apunta sus disparos celestes a enemigos a otra altura.](docs/media/arsenal.gif)
 
 Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno vuelo y dejan una estela que se afina y se apaga detrás de ellos. Con más proyectiles por segundo, el ángulo de salida varía más, los arcos son más frecuentes y las estelas brillan más. En la última etapa del cañón también desprenden chispas doradas. Los verdes siguen su propio zigzag.
 
@@ -35,7 +40,7 @@ Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno 
 | --- | --- |
 | **WASD** o **flechas** | Moverte en ocho direcciones. |
 | **Shift** (mantener) | Activar el vuelo de precisión. Toda la acción pasa al **45 %** de su velocidad y se ilumina el punto vulnerable del avión. |
-| **Barra espaciadora** (mantener) | Guiar el cañón y los misiles o apuntar cada pulso del láser al enemigo más fuerte en pantalla. |
+| **Barra espaciadora** (mantener) | Guiar los disparos del cañón, los misiles y las salvas del arsenal, o apuntar el láser al enemigo más fuerte en pantalla. El robot también prioriza ese blanco. |
 | **P** | Pausar o reanudar. |
 | **M** | Silenciar o activar la música y los efectos. |
 | **Enter** o **R** | Volver a despegar después de perder las tres vidas. |
@@ -43,7 +48,7 @@ Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno 
 
 Podés usar **precisión y guiado juntos**. La cámara lenta alcanza el vuelo, el desplazamiento de la costa, los enemigos, las balas de ambos bandos, la cadencia del cañón y las explosiones. También baja el ritmo de la música, los sonidos de combate y las fanfarrias.
 
-Con el **guiado**, los tiros del cañón y los misiles salen con su trayectoria habitual y enseguida doblan. Los que ya están en vuelo también buscan el blanco. El láser apunta directamente a la mira en el instante de cada pulso. La prioridad es **torreta del acorazado, blindado, lancha, interceptor y explorador**. Si derribás al blanco, la mira salta al siguiente. Al soltar la barra, los proyectiles siguen desde el rumbo que llevaban y el próximo pulso vuelve a salir hacia adelante.
+Con el **guiado**, los tiros del cañón, los misiles y la salva del arsenal salen con su trayectoria habitual y enseguida doblan. Los que ya están en vuelo también buscan el blanco. El láser apunta directamente a la mira en el instante de cada pulso. La prioridad es **torreta del acorazado, blindado, lancha, interceptor y explorador**. Si derribás al blanco, la mira salta al siguiente. Al soltar la barra, los proyectiles siguen desde el rumbo que llevaban y el próximo pulso vuelve a salir hacia adelante.
 
 La mira es **verde** si al blanco le queda más del 60 % de vida. Pasa a **ámbar** al llegar al 60 % o menos. Cuando le queda un cuarto de vida o menos, o está a un solo punto de caer, la mira **parpadea en rojo**. Al cambiar de blanco, toma de inmediato el color que corresponde a la vida del nuevo enemigo.
 
@@ -63,9 +68,9 @@ Las **lanchas patrulleras** navegan por el agua y valen **300 puntos**. Su torre
 
 ### El acorazado
 
-A los **42 segundos de vuelo**, una bocina anuncia al primer jefe. Entra por el agua desde la derecha. La barra **ACORAZADO** muestra su vida total y tiene tres tramos en el mismo orden que las torretas sobre cubierta. Cada torreta tiene **40 puntos de vida**. Al destruirla se apaga su tramo y cesa ese ataque.
+A los **42 segundos de vuelo**, una bocina anuncia al primer jefe. Entra por el agua desde la derecha. La barra **ACORAZADO** muestra sus **120 puntos de integridad** y tres indicadores muestran las torretas de proa a popa. Los proyectiles y el láser dañan el casco y el puente. El buque se ilumina de blanco y se ven pequeñas explosiones en el lugar del impacto.
 
-![El avión destruye las torretas del acorazado. La barra pierde un tramo con cada baja y el barco se hunde cuando cae la última.](docs/media/acorazado.gif)
+![El láser se detiene en la proa. El acorazado destella en blanco, explotan los puntos de impacto y su barra de vida baja con cada pulso.](docs/media/acorazado.gif)
 
 | Torreta | Cómo reconocer su ataque |
 | --- | --- |
@@ -73,7 +78,7 @@ A los **42 segundos de vuelo**, una bocina anuncia al primer jefe. Entra por el 
 | Centro, sobre el puente | El antiaéreo abre un abanico de cinco disparos. Podés pasar por los huecos o desactivarlo primero apuntando a la torreta más alta. |
 | Popa, a la derecha | La batería rápida lanza tres disparos seguidos hacia el punto que fijó antes de la ráfaga. |
 
-Apuntá a las torretas por encima del casco blindado. Cada una vale **250 puntos**. Cuando cae la última, el acorazado se hunde, libera una onda expansiva y suma **1500 puntos** más. Si sobrevive, a los 34 segundos de encuentro empieza a retirarse hacia la izquierda. El siguiente llega **55 segundos después** de que el anterior desaparezca.
+Podés apuntar al casco para hundir el barco o a una torreta para desactivar ese ataque. Cada torreta tiene **40 puntos de vida**, vale **250 puntos** y al recibir daño también baja la integridad del barco. Al llegar a cero, el acorazado se hunde, libera una onda expansiva y suma **1500 puntos**. Si sobrevive, a los 34 segundos de encuentro empieza a retirarse hacia la izquierda. El siguiente llega **55 segundos después** de que el anterior desaparezca.
 
 ### Explosiones en cadena
 

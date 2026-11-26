@@ -1,8 +1,10 @@
 #include "BattleRenderer.hpp"
 #include "Combat.hpp"
 
+#include <SFML/Graphics/Image.hpp>
 #include <SFML/Graphics/RenderStates.hpp>
 #include <SFML/Graphics/RenderTarget.hpp>
+#include <SFML/Graphics/Sprite.hpp>
 
 #include <algorithm>
 #include <array>
@@ -279,6 +281,7 @@ namespace
 
 	void battleshipTurret(Batch& batch, Vec p, TurretKind kind, const Enemy* turret, float time)
 	{
+		const auto firstVertex = batch.size();
 		const auto part = [&](float x, float y, float w, float h, Color color) {
 			rectangle(batch, p.x + x, p.y + y, w, h, color);
 		};
@@ -350,10 +353,23 @@ namespace
 			puff(batch, tip, 3.f + 4.f * warning, { 217, 52, 106 });
 			puff(batch, tip, 1.f + 2.f * warning, { 255, 236, 174 });
 		}
+		if (turret->hitFlash > 0.045f)
+			for (auto i = firstVertex; i < batch.size(); ++i)
+				batch[i].color = Color::White;
+	}
+
+	sf::Texture whiteSilhouette(const sf::Texture& texture)
+	{
+		auto image = texture.copyToImage();
+		const auto size = image.getSize();
+		for (unsigned y = 0; y < size.y; ++y)
+			for (unsigned x = 0; x < size.x; ++x)
+				image.setPixel({x, y}, {255, 255, 255, image.getPixel({x, y}).a});
+		return sf::Texture(image);
 	}
 
 	void drawBattleship(sf::RenderTarget& target, Batch& batch, const sf::Texture& hull,
-						const Combat& combat, const Battleship& ship)
+						const sf::Texture& flashMask, const Combat& combat, const Battleship& ship)
 	{
 		const Vec p{ std::round(ship.position.x), std::round(ship.position.y) };
 		const float sinking = ship.sinking ? std::min(1.f, ship.sinkAge / Battleship::sinkDuration) : 0.f;
@@ -380,6 +396,13 @@ namespace
 		const auto right = edge(size.x);
 		quad(batch, left[0], right[0], right[1], left[1]);
 		drawBatch(target, batch, &hull);
+		const float flash = (ship.hitFlash - 0.045f) / (Battleship::impactInterval - 0.045f);
+		if (flash > 0.f)
+		{
+			for (auto& vertex : batch)
+				vertex.color = faded(Color::White, flash);
+			drawBatch(target, batch, &flashMask);
+		}
 		batch.clear();
 
 		for (int i = 0; i < 4; ++i)
@@ -577,12 +600,64 @@ namespace
 		}
 	}
 
+	void drawDrone(sf::RenderTarget& target, Batch& equipment, const sf::Texture& hull,
+		const OrbitalDrone& drone, float time)
+	{
+		const Vec p{ std::round(drone.position.x), std::round(drone.position.y) };
+		sf::Sprite body(hull);
+		body.setOrigin({ 13.f, 11.f });
+		body.setPosition(p);
+		target.draw(body);
+
+		for (const float x : { -8.f, 10.f })
+		{
+			const float flame = 3.5f + 1.5f * std::sin(31.f * time + x);
+			rectangle(equipment, p.x + x - 1.f, p.y + 7.f, 2.f, flame, { 53, 167, 197 });
+			rectangle(equipment, p.x + x - 1.f, p.y + 7.f, 2.f, 2.f, { 186, 252, 230 });
+		}
+		const Vec aim = drone.direction;
+		const Vec muzzle = drone.muzzle();
+		streak(equipment, drone.position, muzzle, aim, 2.4f, { 30, 38, 51 });
+		streak(equipment, drone.position, muzzle - aim, aim, 1.4f, { 153, 163, 158 });
+		streak(equipment, muzzle - aim * 4.f, muzzle - aim, aim, 1.4f,
+			drone.tracking ? Color{ 85, 222, 241 } : Color{ 67, 96, 111 });
+		rectangle(equipment, p.x - 2.f, p.y - 1.f, 4.f, 3.f, { 52, 58, 69 });
+		rectangle(equipment, p.x - 1.f, p.y - 1.f, 2.f, 1.f, { 241, 184, 100 });
+		if (drone.muzzleFlash > 0.f)
+		{
+			const float reach = 2.f + 5.f * drone.muzzleFlash;
+			bolt(equipment, muzzle - aim * 2.f, muzzle + aim * reach, aim, 2.4f,
+				faded({ 133, 243, 255 }, drone.muzzleFlash));
+		}
+	}
+
 	void projectile(Batch& batch, const Shot& shot)
 	{
 		const Vec p = shot.position;
 		const float r = shot.radius;
 		const bool friendly = shot.isFriendly();
 		const Vec direction = shot.velocity != Vec{} ? shot.velocity.normalized() : Vec{ 1.f, 0.f };
+
+		if (shot.kind == ShotKind::Salvo)
+		{
+			const Vec tail = p - direction * 8.f;
+			const Vec wing = direction.perpendicular() * 2.8f;
+			const Vec tip = p + direction * 6.f;
+			batch.insert(batch.end(), { {tail + wing, {228, 124, 56}}, {tip, {255, 248, 192}},
+				{tail - wing, {160, 75, 44}} });
+			bolt(batch, tail - direction * 4.f, tip, direction, 1.6f, { 255, 207, 99 });
+			streak(batch, tail + direction * 6.f, tip - direction, direction, 0.85f, { 255, 253, 220 });
+			return;
+		}
+
+		if (shot.kind == ShotKind::Drone)
+		{
+			const Vec tail = p - direction * 7.f;
+			bolt(batch, tail, p + direction * 2.f, direction, 2.4f, { 31, 111, 146 });
+			bolt(batch, tail + direction, p + direction * 2.f, direction, 1.65f, { 101, 232, 249 });
+			streak(batch, p - direction * 3.f, p, direction, 0.85f, { 231, 255, 241 });
+			return;
+		}
 
 		if (shot.kind == ShotKind::Missile)
 		{
@@ -713,7 +788,8 @@ namespace
 		if (t >= 1.f) return;
 
 		const Vec center = effect.position;
-		const float size = effect.kind == ExplosionKind::Player ? 1.6f : 1.f;
+		const float size = effect.kind == ExplosionKind::HullImpact ? 0.48f :
+		                   effect.kind == ExplosionKind::Player ? 1.6f : 1.f;
 		const float spread = t * (2.f - t);
 		unsigned noise = effect.seed;
 
@@ -778,7 +854,8 @@ namespace
 
 BattleRenderer::BattleRenderer(const std::filesystem::path& arcadeDirectory)
 	: coast(arcadeDirectory / "coast.png"), enemyAtlas(arcadeDirectory / "enemies.png"),
-	burstAtlas(arcadeDirectory / "burst.png"), battleshipHull(arcadeDirectory / "battleship-hull.png")
+	burstAtlas(arcadeDirectory / "burst.png"), battleshipHull(arcadeDirectory / "battleship-hull.png"),
+	battleshipFlashMask(whiteSilhouette(battleshipHull)), droneHull(arcadeDirectory / "orbital-drone.png")
 {
 	coast.setRepeated(true);
 }
@@ -825,7 +902,7 @@ void BattleRenderer::drawEnemies(sf::RenderTarget& target, const Combat& combat)
 	textured.clear();
 	foreground.clear();
 	if (const auto& ship = combat.battleship())
-		drawBattleship(target, foreground, battleshipHull, combat, *ship);
+		drawBattleship(target, foreground, battleshipHull, battleshipFlashMask, combat, *ship);
 	for (const Enemy& enemy : combat.enemies())
 	{
 		if (enemy.kind == EnemyKind::BattleshipTurret)
@@ -851,6 +928,8 @@ void BattleRenderer::drawEffects(sf::RenderTarget& target, const Combat& combat)
 	geometry.clear();
 	textured.clear();
 	foreground.clear();
+	if (const auto& drone = combat.drone(); drone && !combat.gameOver())
+		drawDrone(target, geometry, droneHull, *drone, combat.elapsed());
 	for (const Explosion& effect : combat.explosions())
 	{
 		if (effect.kind == ExplosionKind::Gunship)

@@ -29,13 +29,16 @@ private:
     sf::SoundBuffer fanfareFiveData, fanfareTenData;
     sf::SoundBuffer precisionReadyData, guidanceReadyData, shipHornData, lifeRecoveredData;
     sf::SoundBuffer lifeWarningData;
+    sf::SoundBuffer arsenalData, droneData, hullImpactData;
     sf::Sound music, weapon, blast, wave, impact, upgrade, comboNote, fanfare;
     sf::Sound precisionReady, guidanceReady, shipHorn, lifeRecovered, lifeWarning;
+    sf::Sound droneShot, hullImpact;
     std::deque<sf::Sound> gunshipBlasts;
     std::deque<int> pendingComboNotes;
     float timeScale_ = 1.f;
     float comboPitch_ = 1.f;
     unsigned int lastVolley = 0;
+    unsigned lastDroneShot = 0;
     unsigned int lastExplosion = 0;
     unsigned lastMilestone = 0;
     unsigned lastPrecisionRefill = 0;

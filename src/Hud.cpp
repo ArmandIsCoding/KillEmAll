@@ -54,22 +54,27 @@ void bossMeter(sf::RenderTarget& target, const sf::Font& font, const Combat& com
     rect(target, 265, 63, 3, 25, gold);
     label(target, font, "ACORAZADO", 277, 71, 10, ivory);
 
-    // The three sections match the guns on deck, from bow to stern.
-    constexpr std::array sections{TurretKind::Cannon, TurretKind::Flak, TurretKind::Burst};
     rect(target, 378, 68, 262, 15, seam);
     rect(target, 380, 70, 258, 11, ink);
+    const int health = combat.bossHealth();
+    const float hullFill = std::ceil(258.f * health / Battleship::maxHealth);
+    rect(target, 380, 70, 258, 7, {64, 46, 48});
+    rect(target, 380, 70, hullFill, 7, combat.battleship()->hitFlash > 0.05f ? ivory : sf::Color{225, 101, 77});
+    rect(target, 380, 70, hullFill, 2, {255, 191, 140});
+
+    // The thinner gauges below the hull read from bow to stern.
+    constexpr std::array sections{TurretKind::Cannon, TurretKind::Flak, TurretKind::Burst};
     for (std::size_t i = 0; i < sections.size(); ++i)
     {
         const float x = 380.f + 87.f * static_cast<float>(i);
-        rect(target, x, 70, 84, 11, {64, 46, 48});
+        rect(target, x, 78, 84, 3, {64, 46, 48});
         if (const auto* gun = combat.bossTurret(sections[i]))
         {
             const float fill = std::ceil(84.f * gun->health / gun->maxHealth());
-            rect(target, x, 70, fill, 11, gun->hitFlash > 0.f ? gold : sf::Color{225, 101, 77});
-            rect(target, x, 70, fill, 2, {255, 191, 140});
+            rect(target, x, 78, fill, 3, gun->hitFlash > 0.f ? ivory : gold);
         }
     }
-    const int percent = (100 * combat.bossHealth() + Battleship::maxHealth - 1) / Battleship::maxHealth;
+    const int percent = (100 * health + Battleship::maxHealth - 1) / Battleship::maxHealth;
     const auto value = std::to_string(percent) + "%";
     label(target, font, value, 687.f - 10.f * static_cast<float>(value.size()), 71, 10, ivory);
 }
@@ -277,6 +282,11 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     {
         weaponName = U"L\u00c1SER";
         weaponColor = cyan;
+    }
+    else if (mode == WeaponMode::Arsenal)
+    {
+        weaponName = "ARSENAL";
+        weaponColor = {147, 213, 255};
     }
     label(target, font, weaponName, 295, 8, 12, weaponColor);
     for (int i = 0; i < 5; ++i)

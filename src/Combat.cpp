@@ -17,6 +17,8 @@ constexpr std::array<float, 5> recoveryBlinkPeriods{0.36f, 0.48f, 0.60f, 0.72f, 
 constexpr float missileThreshold = 30.f;
 constexpr float laserThreshold = 65.f;
 constexpr float fullLaserRate = 130.f;
+constexpr float fullArsenalRate = 180.f;
+constexpr float salvoOpeningTime = 0.24f;
 constexpr float burstSpacing = 0.105f;
 constexpr float singleReload = 0.23f;
 
@@ -130,6 +132,51 @@ bool overlaps(sf::Vector2f a, float aRadius, sf::Vector2f b, float bRadius)
     return (a - b).lengthSquared() <= range * range;
 }
 
+bool isVisibleTarget(const Enemy& enemy)
+{
+    return enemy.health > 0 && enemy.position.x >= 0.f && enemy.position.x <= width &&
+           enemy.position.y >= 0.f && enemy.position.y <= height;
+}
+
+struct HullSection
+{
+    float left, top, right, bottom;
+};
+
+// Solid decks, bridge, funnel and mast, relative to the waterline of the hull sprite.
+constexpr std::array<HullSection, 12> hullSections{{
+    {-127.f, -8.f, 124.f, 2.f}, {-119.f, 2.f, 124.f, 10.f}, {-108.f, 10.f, 119.f, 16.f},
+    {-95.f, 16.f, 107.f, 20.f}, {-62.f, -21.f, 112.f, -8.f}, {-39.f, -32.f, 100.f, -21.f},
+    {-24.f, -58.f, 20.f, -32.f}, {30.f, -54.f, 46.f, -32.f}, {49.f, -43.f, 61.f, -32.f},
+    {53.f, -83.f, 56.f, -43.f}, {44.f, -74.f, 64.f, -71.f}, {42.f, -65.f, 67.f, -62.f}
+}};
+
+bool clipRayAxis(float origin, float direction, float low, float high, float& enter, float& leave)
+{
+    if (direction == 0.f)
+        return origin >= low && origin <= high;
+    const float a = (low - origin) / direction;
+    const float b = (high - origin) / direction;
+    enter = std::max(enter, std::min(a, b));
+    leave = std::min(leave, std::max(a, b));
+    return enter <= leave;
+}
+
+std::optional<float> rayCircleHit(sf::Vector2f origin, sf::Vector2f direction, float reach,
+                                  sf::Vector2f center, float radius)
+{
+    const auto toCenter = center - origin;
+    const float along = toCenter.dot(direction);
+    const float across = toCenter.cross(direction);
+    const float chordSquared = radius * radius - across * across;
+    if (chordSquared < 0.f)
+        return {};
+    const float halfChord = std::sqrt(chordSquared);
+    if (along + halfChord < 0.f || along - halfChord > reach)
+        return {};
+    return std::max(0.f, along - halfChord);
+}
+
 sf::Vector2f velocityAt(float angle, float speed)
 {
     return {speed * std::cos(angle), speed * std::sin(angle)};
@@ -185,13 +232,44 @@ sf::Vector2f Battleship::mountPosition(TurretKind kind) const
     return position + battery(kind).mount;
 }
 
+sf::Vector2f Battleship::nearestHullPoint(sf::Vector2f point) const
+{
+    const auto local = point - position;
+    sf::Vector2f nearest{};
+    float best = std::numeric_limits<float>::infinity();
+    for (const auto& plate : hullSections)
+    {
+        const sf::Vector2f candidate{std::clamp(local.x, plate.left, plate.right),
+                                     std::clamp(local.y, plate.top, plate.bottom)};
+        const float distance = (local - candidate).lengthSquared();
+        if (distance < best)
+        {
+            nearest = candidate;
+            best = distance;
+        }
+    }
+    return position + nearest;
+}
+
 bool Battleship::touchesHull(sf::Vector2f point, float radius) const
 {
+    return !sinking && (point - nearestHullPoint(point)).lengthSquared() <= radius * radius;
+}
+
+std::optional<float> Battleship::hullRayHit(sf::Vector2f origin, sf::Vector2f direction, float reach, float radius) const
+{
     if (sinking)
-        return false;
-    const auto local = point - position;
-    const sf::Vector2f nearest{std::clamp(local.x, -115.f, 115.f), std::clamp(local.y, -4.f, 9.f)};
-    return (local - nearest).lengthSquared() <= radius * radius;
+        return {};
+    const auto local = origin - position;
+    std::optional<float> nearest;
+    for (const auto& plate : hullSections)
+    {
+        float enter = 0.f, leave = nearest.value_or(reach);
+        if (clipRayAxis(local.x, direction.x, plate.left - radius, plate.right + radius, enter, leave) &&
+            clipRayAxis(local.y, direction.y, plate.top - radius, plate.bottom + radius, enter, leave))
+            nearest = enter;
+    }
+    return nearest;
 }
 
 sf::Vector2f Enemy::turretPivot() const
@@ -264,11 +342,7 @@ const Enemy* Combat::bossTurret(TurretKind kind) const
 
 int Combat::bossHealth() const
 {
-    int health = 0;
-    for (const auto& enemy : enemies_)
-        if (enemy.kind == EnemyKind::BattleshipTurret)
-            health += enemy.health;
-    return health;
+    return battleship_ ? battleship_->health : 0;
 }
 
 const Enemy* Combat::guidanceTarget() const
@@ -279,8 +353,7 @@ const Enemy* Combat::guidanceTarget() const
     const Enemy* best = nullptr;
     for (const auto& enemy : enemies_)
     {
-        if (enemy.health <= 0 || enemy.position.x < 0.f || enemy.position.x > width ||
-            enemy.position.y < 0.f || enemy.position.y > height)
+        if (!isVisibleTarget(enemy))
             continue;
         // Equal classes retain formation order instead of switching on every hit.
         if (!best || enemy.maxHealth() > best->maxHealth())
@@ -429,6 +502,8 @@ void Combat::step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffs
     updateWeapon(dt, playerPosition + muzzleOffset);
     updateShots(dt);
     collide(playerPosition);
+    if (weaponMode_ == WeaponMode::Arsenal && !gameOver())
+        updateDrone(dt, playerPosition);
 }
 
 void Combat::spawnFormation()
@@ -623,6 +698,7 @@ void Combat::updateBattleship(float dt)
         }
     }
     auto& ship = *battleship_;
+    ship.hitFlash = std::max(0.f, ship.hitFlash - dt);
     if (ship.sinking)
     {
         ship.sinkAge += dt;
@@ -688,10 +764,34 @@ void Combat::updateBossTurret(Enemy& turret, float dt, sf::Vector2f playerPositi
     turret.fireTimer += (turret.turretKind == TurretKind::Burst && turret.volleys % 3 != 0) ? 0.15f : gun.reload;
 }
 
+void Combat::damageHull(int amount, sf::Vector2f impact, unsigned chainId, bool countedKill)
+{
+    if (!battleship_ || battleship_->sinking || amount <= 0)
+        return;
+    auto& ship = *battleship_;
+    ship.health = std::max(0, ship.health - amount);
+    if (ship.health == 0)
+    {
+        if (!countedKill)
+            creditEnemyKill(0, chainId);
+        sinkBattleship(chainId);
+        if (!countedKill && chainId != 0)
+            explosions_.back().comboKills = chains_.at(chainId).tally.kills;
+    }
+    else if (ship.hitFlash <= 0.f)
+    {
+        ship.hitFlash = Battleship::impactInterval;
+        explode(impact, ExplosionKind::HullImpact);
+    }
+}
+
 void Combat::sinkBattleship(unsigned chainId)
 {
     auto& ship = *battleship_;
     ship.sinking = true;
+    for (auto& enemy : enemies_)
+        if (enemy.kind == EnemyKind::BattleshipTurret)
+            enemy.health = 0;
     score_ += 1500;
     explode(ship.position + sf::Vector2f{-67.f, -9.f}, ExplosionKind::Enemy);
     explode(ship.position + sf::Vector2f{60.f, -12.f}, ExplosionKind::Enemy);
@@ -710,7 +810,7 @@ void Combat::updatePickup(float dt, sf::Vector2f playerPosition)
 {
     if (!fireRatePickup_)
     {
-        if (weaponMode_ == WeaponMode::Laser && effectiveFireRate() >= fullLaserRate)
+        if (weaponMode_ == WeaponMode::Arsenal && effectiveFireRate() >= fullArsenalRate)
             return;
         nextPickup_ -= dt;
         if (nextPickup_ > 0.f)
@@ -754,13 +854,25 @@ void Combat::updateWeapon(float dt, sf::Vector2f muzzle)
     if (weaponMode_ == WeaponMode::Cannon && rate >= missileThreshold)
     {
         weaponMode_ = WeaponMode::Missiles;
-        missilesSince_ = elapsed_;
+        weaponSince_ = elapsed_;
         nextPulse_ = 0.f;
     }
-    else if (weaponMode_ == WeaponMode::Missiles && rate >= laserThreshold && elapsed_ - missilesSince_ >= 12.f)
+    else if (weaponMode_ == WeaponMode::Missiles && rate >= laserThreshold && elapsed_ - weaponSince_ >= 12.f)
     {
         weaponMode_ = WeaponMode::Laser;
+        weaponSince_ = elapsed_;
         nextPulse_ = 0.f;
+    }
+    else if (weaponMode_ == WeaponMode::Laser)
+    {
+        const float laserDuration = std::clamp(55.f - 0.5f * (rate - laserThreshold), 22.f, 55.f);
+        if (elapsed_ - weaponSince_ >= laserDuration)
+        {
+            weaponMode_ = WeaponMode::Arsenal;
+            weaponSince_ = elapsed_;
+            drone_.emplace();
+            nextPulse_ = 0.f;
+        }
     }
 
     nextPulse_ -= dt;
@@ -780,11 +892,17 @@ void Combat::updateWeapon(float dt, sf::Vector2f muzzle)
         const float strength = std::clamp((rate - missileThreshold) / (laserThreshold - missileThreshold), 0.f, 1.f);
         nextPulse_ += 0.35f - 0.13f * strength;
     }
-    else
+    else if (weaponMode_ == WeaponMode::Laser)
     {
         fireLaser(muzzle);
         const float strength = std::clamp((rate - laserThreshold) / (fullLaserRate - laserThreshold), 0.f, 1.f);
         nextPulse_ += 0.36f - 0.14f * strength;
+    }
+    else
+    {
+        fireSalvo(muzzle);
+        const float strength = std::clamp((rate - laserThreshold) / (fullArsenalRate - laserThreshold), 0.f, 1.f);
+        nextPulse_ += 0.38f - 0.12f * strength;
     }
 }
 
@@ -804,15 +922,35 @@ void Combat::fireLaser(sf::Vector2f muzzle)
         reach = std::min(reach, ((direction.y > 0.f ? height : 0.f) - muzzle.y) / direction.y);
     if (reach <= 0.f)
         return;
+    const auto hullContact = battleship_ ? battleship_->hullRayHit(muzzle, direction, reach, LaserPulse::radius)
+                                         : std::nullopt;
+    reach = hullContact.value_or(reach);
+    Enemy* turretHit = nullptr;
+    for (auto& enemy : enemies_)
+    {
+        if (enemy.kind != EnemyKind::BattleshipTurret || enemy.health <= 0)
+            continue;
+        const auto contact = rayCircleHit(muzzle, direction, reach, enemy.position, enemy.radius + LaserPulse::radius);
+        if (contact)
+        {
+            reach = *contact;
+            turretHit = &enemy;
+        }
+    }
     laserPulse_ = LaserPulse{muzzle, muzzle + direction * reach};
     for (auto& enemy : enemies_)
     {
-        if (enemy.health <= 0 || enemy.position.x < 0.f || enemy.position.x > width)
+        if (enemy.health <= 0 || enemy.kind == EnemyKind::BattleshipTurret ||
+            enemy.position.x < 0.f || enemy.position.x > width)
             continue;
         const float along = std::clamp((enemy.position - muzzle).dot(direction), 0.f, reach);
         if (overlaps(muzzle + direction * along, LaserPulse::radius, enemy.position, enemy.radius))
             damage(enemy, 8);
     }
+    if (turretHit)
+        damage(*turretHit, 8, 0, laserPulse_->end);
+    else if (hullContact)
+        damageHull(8, laserPulse_->end);
 }
 
 void Combat::fireVolley(sf::Vector2f muzzle)
@@ -857,6 +995,58 @@ void Combat::fireVolley(sf::Vector2f muzzle)
     nextPulse_ += (burstRemaining_ > 0 ? burstSpacing : pattern.reload) / fireRateMultiplier_;
 }
 
+void Combat::fireSalvo(sf::Vector2f muzzle)
+{
+    for (int lane = -3; lane <= 3; ++lane)
+    {
+        const float spread = lane / 3.f;
+        Shot shot{ShotKind::Salvo, muzzle + sf::Vector2f{0.f, 3.f * spread},
+                  {690.f, 20.f * spread}, 2.8f, 0.f, 0.f};
+        shot.verticalAcceleration = 270.f * spread;
+        shots_.push_back(shot);
+    }
+}
+
+void Combat::updateDrone(float dt, sf::Vector2f playerPosition)
+{
+    auto& drone = *drone_;
+    const float angle = 2.7f * (elapsed_ - weaponSince_);
+    drone.position = {
+        std::clamp(playerPosition.x + 50.f * std::cos(angle), 12.f, width - 12.f),
+        std::clamp(playerPosition.y + 32.f * std::sin(angle), 12.f, height - 12.f)
+    };
+    drone.muzzleFlash = std::max(0.f, drone.muzzleFlash - dt / 0.08f);
+    nextDroneShot_ = std::max(0.f, nextDroneShot_ - dt);
+
+    const Enemy* target = guidanceTarget();
+    if (!target)
+    {
+        float closest = std::numeric_limits<float>::infinity();
+        for (const auto& enemy : enemies_)
+        {
+            if (!isVisibleTarget(enemy))
+                continue;
+            const float distance = (enemy.position - drone.position).lengthSquared();
+            if (distance < closest)
+            {
+                closest = distance;
+                target = &enemy;
+            }
+        }
+    }
+    drone.tracking = target && target->position != drone.position;
+    if (!drone.tracking)
+        return;
+
+    drone.direction = (target->position - drone.position).normalized();
+    if (nextDroneShot_ > 0.f)
+        return;
+    shots_.push_back({ShotKind::Drone, drone.muzzle(), drone.direction * 570.f, 2.4f, 0.f, 0.f});
+    ++droneShotsFired_;
+    drone.muzzleFlash = 1.f;
+    nextDroneShot_ = 0.42f;
+}
+
 void Combat::updateShots(float dt)
 {
     const auto* target = guidanceTarget();
@@ -893,8 +1083,11 @@ void Combat::updateShots(float dt)
         shot.position += shot.velocity * dt;
         if (!steering && shot.verticalAcceleration != 0.f)
         {
-            const float changeInSpeedY = shot.verticalAcceleration * dt;
-            shot.position.y += 0.5f * changeInSpeedY * dt;
+            // The arsenal's outer lanes bend only near the muzzle, then hold a narrow fan.
+            const float bendTime = shot.kind == ShotKind::Salvo
+                ? std::clamp(salvoOpeningTime - (shot.age - dt), 0.f, dt) : dt;
+            const float changeInSpeedY = shot.verticalAcceleration * bendTime;
+            shot.position.y += changeInSpeedY * (dt - 0.5f * bendTime);
             shot.velocity.y += changeInSpeedY;
         }
     }
@@ -902,7 +1095,8 @@ void Combat::updateShots(float dt)
 
 void Combat::explode(sf::Vector2f position, ExplosionKind kind, unsigned chainId)
 {
-    const float duration = kind == ExplosionKind::Wave ? 0.27f : kind == ExplosionKind::Player ? 0.75f : 0.45f;
+    const float duration = kind == ExplosionKind::HullImpact ? 0.23f :
+                           kind == ExplosionKind::Wave ? 0.27f : kind == ExplosionKind::Player ? 0.75f : 0.45f;
     explosions_.push_back({position, 0.f, duration, kind, ++explosionSerial_});
     if (kind == ExplosionKind::Gunship)
     {
@@ -966,33 +1160,38 @@ void Combat::creditRecoveryKill()
     }
 }
 
-void Combat::damage(Enemy& enemy, int amount, unsigned chainId)
+void Combat::creditEnemyKill(int points, unsigned chainId)
+{
+    score_ += points;
+    creditRecoveryKill();
+    if (chainId == 0)
+        return;
+    auto& tally = chains_.at(chainId).tally;
+    const int extra = 100 * tally.kills;
+    ++tally.kills;
+    tally.bonus += extra;
+    score_ += extra;
+    lastCombo_ = tally;
+    comboUntil_ = elapsed_ + 2.f;
+    bestCombo_ = std::max(bestCombo_, tally.kills);
+    if (tally.kills == 5 || tally.kills == 10)
+        milestones_.push_back(tally.kills);
+}
+
+void Combat::damage(Enemy& enemy, int amount, unsigned chainId, std::optional<sf::Vector2f> impact)
 {
     if (enemy.health <= 0)
         return;
     enemy.hitFlash = 0.09f;
-    enemy.health = std::max(0, enemy.health - amount);
+    const int dealt = std::min(enemy.health, amount);
+    enemy.health -= dealt;
     if (enemy.health == 0)
     {
-        score_ += stats(enemy.kind).points;
-        creditRecoveryKill();
-        if (chainId != 0)
-        {
-            auto& tally = chains_.at(chainId).tally;
-            const int extra = 100 * tally.kills;
-            ++tally.kills;
-            tally.bonus += extra;
-            score_ += extra;
-            lastCombo_ = tally;
-            comboUntil_ = elapsed_ + 2.f;
-            bestCombo_ = std::max(bestCombo_, tally.kills);
-            if (tally.kills == 5 || tally.kills == 10)
-                milestones_.push_back(tally.kills);
-        }
+        creditEnemyKill(stats(enemy.kind).points, chainId);
         explodeEnemy(enemy, chainId);
-        if (enemy.kind == EnemyKind::BattleshipTurret && battleship_ && !battleship_->sinking && bossHealth() == 0)
-            sinkBattleship(chainId);
     }
+    if (enemy.kind == EnemyKind::BattleshipTurret)
+        damageHull(dealt, impact.value_or(enemy.position), chainId, enemy.health == 0);
 }
 
 void Combat::hitEnemies(Shot& shot)
@@ -1010,18 +1209,28 @@ void Combat::hitEnemies(Shot& shot)
     if (hit == enemies_.end() && !hullHit && !timedOut)
         return;
     shot.spent = true;
-    if (shot.kind == ShotKind::Player)
+    if (shot.kind != ShotKind::PlayerWave && shot.kind != ShotKind::Missile)
     {
+        const int directDamage = shot.kind == ShotKind::Player ? 1 : 2;
         if (hit != enemies_.end())
-            damage(*hit, 1);
+            damage(*hit, directDamage, 0, shot.position);
+        else if (hullHit)
+            damageHull(directDamage, shot.position);
         return;
     }
     if (!onScreen && hit == enemies_.end())
         return;
     explode(shot.position, ExplosionKind::Wave);
+    const int healthBefore = bossHealth();
     for (auto enemy = enemies_.begin(); enemy != enemies_.end(); ++enemy)
         if (touches(*enemy, waveBlastRadius))
-            damage(*enemy, shot.kind == ShotKind::Missile && enemy == hit ? 5 : 2);
+            damage(*enemy, shot.kind == ShotKind::Missile && enemy == hit ? 5 : 2, 0, enemy->position);
+    if (battleship_ && battleship_->touchesHull(shot.position, waveBlastRadius))
+    {
+        const int structuralDamage = shot.kind == ShotKind::Missile && hullHit && hit == enemies_.end() ? 5 : 2;
+        // Nearby turrets already transferred their share of this blast to the ship.
+        damageHull(structuralDamage - (healthBefore - bossHealth()), battleship_->nearestHullPoint(shot.position));
+    }
 }
 
 void Combat::sweepGunshipShockwaves()
@@ -1046,6 +1255,7 @@ void Combat::sweepGunshipShockwaves()
             if (!shot.isFriendly() && touchesFront(shot.position, shot.radius))
                 shot.spent = true;
 
+        const int healthBefore = bossHealth();
         for (auto& enemy : enemies_)
         {
             if (enemy.health <= 0 || enemy.position.x < 0.f || enemy.position.x > width ||
@@ -1058,6 +1268,16 @@ void Combat::sweepGunshipShockwaves()
             damage(enemy, inCore ? stats(EnemyKind::Gunship).health : 3, wave.chainId);
             if (enemy.health > 0)
                 hits.push_back(wave.seed);
+        }
+        if (battleship_ && !battleship_->sinking && !wave.hitBattleship)
+        {
+            const auto impact = battleship_->nearestHullPoint(wave.position);
+            if (impact.x >= 0.f && impact.x <= width && touchesFront(impact, 0.f))
+            {
+                explosions_[i].hitBattleship = true;
+                const int amount = overlaps(wave.position, coreRadius, impact, 0.f) ? stats(EnemyKind::Gunship).health : 3;
+                damageHull(amount - (healthBefore - bossHealth()), impact, wave.chainId);
+            }
         }
     }
 }

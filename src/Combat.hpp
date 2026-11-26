@@ -17,17 +17,22 @@ struct Battleship
     static constexpr int turretHealth = 40;
     static constexpr int maxHealth = 3 * turretHealth;
     static constexpr float sinkDuration = 1.3f;
+    static constexpr float impactInterval = 0.13f;
     sf::Vector2f position{1088.f, 509.f};
+    int health = maxHealth;
+    float hitFlash = 0.f;
     float age = 0.f;
     bool sinking = false;
     float sinkAge = 0.f;
 
     sf::Vector2f mountPosition(TurretKind kind) const;
+    sf::Vector2f nearestHullPoint(sf::Vector2f point) const;
     bool touchesHull(sf::Vector2f point, float radius) const;
+    std::optional<float> hullRayHit(sf::Vector2f origin, sf::Vector2f direction, float reach, float radius) const;
 };
-enum class ShotKind { Player, PlayerWave, Enemy, EnemyOrb, Missile };
-enum class WeaponMode { Cannon, Missiles, Laser };
-enum class ExplosionKind { Enemy, Gunship, Player, Wave };
+enum class ShotKind { Player, PlayerWave, Enemy, EnemyOrb, Missile, Salvo, Drone };
+enum class WeaponMode { Cannon, Missiles, Laser, Arsenal };
+enum class ExplosionKind { Enemy, Gunship, Player, Wave, HullImpact };
 enum class FlightPath { Weave, CrossLane, Pursuit, Breakaway };
 
 struct Enemy
@@ -81,7 +86,7 @@ struct Shot
     float waveDriftX = 0.f;
     std::vector<TrailSample> trailHistory{};
 
-    bool isFriendly() const { return kind == ShotKind::Player || kind == ShotKind::PlayerWave || kind == ShotKind::Missile; }
+    bool isFriendly() const { return kind != ShotKind::Enemy && kind != ShotKind::EnemyOrb; }
     bool hasTrail() const { return kind == ShotKind::Player && (verticalAcceleration != 0.f || !trailHistory.empty()); }
     TrailSample trailSample(float lookback) const;
 };
@@ -108,6 +113,16 @@ struct FireRatePickup
     float age;
 };
 
+struct OrbitalDrone
+{
+    sf::Vector2f position{};
+    sf::Vector2f direction{1.f, 0.f};
+    bool tracking = false;
+    float muzzleFlash = 0.f;
+
+    sf::Vector2f muzzle() const { return position + direction * 11.f; }
+};
+
 struct Explosion
 {
     sf::Vector2f position;
@@ -118,6 +133,7 @@ struct Explosion
     float sweptRadius = 0.f;
     unsigned chainId = 0;
     int comboKills = 0;
+    bool hitBattleship = false;
 
     float shockwaveRadius() const;
 };
@@ -163,6 +179,8 @@ public:
     const std::vector<Shot>& shots() const { return shots_; }
     const std::optional<LaserPulse>& laserPulse() const { return laserPulse_; }
     WeaponMode weaponMode() const { return weaponMode_; }
+    const std::optional<OrbitalDrone>& drone() const { return drone_; }
+    unsigned droneShotsFired() const { return droneShotsFired_; }
     const std::vector<FadingTrail>& fadingTrails() const { return fadingTrails_; }
     const std::vector<Explosion>& explosions() const { return explosions_; }
     sf::Vector2f screenShakeOffset() const;
@@ -213,6 +231,7 @@ private:
     void updateBoat(Enemy& boat, float dt, sf::Vector2f playerPosition);
     void updateBattleship(float dt);
     void updateBossTurret(Enemy& turret, float dt, sf::Vector2f playerPosition);
+    void damageHull(int amount, sf::Vector2f impact, unsigned chainId = 0, bool countedKill = false);
     void sinkBattleship(unsigned chainId);
     void updateEnemies(float dt, sf::Vector2f playerPosition);
     void fireEnemy(Enemy& enemy, sf::Vector2f playerPosition);
@@ -222,11 +241,14 @@ private:
     float effectiveFireRate() const;
     void fireLaser(sf::Vector2f muzzle);
     void fireVolley(sf::Vector2f muzzle);
+    void fireSalvo(sf::Vector2f muzzle);
+    void updateDrone(float dt, sf::Vector2f playerPosition);
     void updateShots(float dt);
     void collide(sf::Vector2f playerPosition);
     void sweepGunshipShockwaves();
     void hitEnemies(Shot& shot);
-    void damage(Enemy& enemy, int amount, unsigned chainId = 0);
+    void damage(Enemy& enemy, int amount, unsigned chainId = 0, std::optional<sf::Vector2f> impact = {});
+    void creditEnemyKill(int points, unsigned chainId);
     void creditRecoveryKill();
     void hitPlayer(sf::Vector2f position);
     void explodeEnemy(const Enemy& enemy, unsigned chainId = 0);
@@ -268,7 +290,10 @@ private:
     float nextBoat_ = 9.f;
     float nextPulse_ = 0.f;
     WeaponMode weaponMode_ = WeaponMode::Cannon;
-    float missilesSince_ = 0.f;
+    float weaponSince_ = 0.f;
+    std::optional<OrbitalDrone> drone_;
+    float nextDroneShot_ = 0.f;
+    unsigned droneShotsFired_ = 0;
     std::optional<LaserPulse> laserPulse_;
     int burstRemaining_ = 0;
     unsigned formation_ = 0;

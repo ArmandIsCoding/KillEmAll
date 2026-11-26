@@ -12,10 +12,11 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
       precisionReadyData(folder / "precision-ready.wav"), guidanceReadyData(folder / "guidance-ready.wav"),
       shipHornData(folder / "ship-horn.wav"), lifeRecoveredData(folder / "life-recovered.wav"),
       lifeWarningData(folder / "life-warning.wav"),
+      arsenalData(folder / "arsenal.wav"), droneData(folder / "drone-shot.wav"), hullImpactData(folder / "hull-impact.wav"),
       music(musicData), weapon(cannonData), blast(blastData), wave(blastData),
       impact(impactData), upgrade(powerData), comboNote(comboData), fanfare(fanfareFiveData),
       precisionReady(precisionReadyData), guidanceReady(guidanceReadyData), shipHorn(shipHornData),
-      lifeRecovered(lifeRecoveredData), lifeWarning(lifeWarningData)
+      lifeRecovered(lifeRecoveredData), lifeWarning(lifeWarningData), droneShot(droneData), hullImpact(hullImpactData)
 {
     music.setLooping(true);
     music.setVolume(24.f);
@@ -32,6 +33,8 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
     shipHorn.setVolume(48.f);
     lifeRecovered.setVolume(65.f);
     lifeWarning.setVolume(58.f);
+    droneShot.setVolume(15.f);
+    hullImpact.setVolume(32.f);
 }
 
 void GameAudio::restart()
@@ -40,6 +43,7 @@ void GameAudio::restart()
     setTimeScale(1.f);
     music.stop();
     lastVolley = 0;
+    lastDroneShot = 0;
     lastExplosion = 0;
     lastMilestone = 0;
     lastPrecisionRefill = 0;
@@ -68,6 +72,8 @@ void GameAudio::stopBattleSounds()
 {
     music.pause();
     weapon.stop();
+    droneShot.stop();
+    hullImpact.stop();
     blast.stop();
     gunshipBlasts.clear();
     wave.stop();
@@ -94,6 +100,8 @@ void GameAudio::setTimeScale(float scale)
     timeScale_ = scale;
     music.setPitch(scale);
     weapon.setPitch(scale);
+    droneShot.setPitch(scale);
+    hullImpact.setPitch(scale);
     blast.setPitch(scale);
     wave.setPitch(1.65f * scale);
     impact.setPitch(scale);
@@ -116,6 +124,8 @@ void GameAudio::playWeapon(WeaponMode mode)
         buffer = &missileData;
     else if (mode == WeaponMode::Laser)
         buffer = &laserData;
+    else if (mode == WeaponMode::Arsenal)
+        buffer = &arsenalData;
     if (&weapon.getBuffer() != buffer)
     {
         weapon.setBuffer(*buffer);
@@ -161,6 +171,8 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
                 blast.play();
             else if (running && effect.kind == ExplosionKind::Wave)
                 wave.play();
+            else if (running && effect.kind == ExplosionKind::HullImpact)
+                hullImpact.play();
             else if (running && effect.kind == ExplosionKind::Player)
                 impact.play();
             if (effect.comboKills > 0)
@@ -168,6 +180,8 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
         }
         if (running && combat.volleysFired() != lastVolley)
             playWeapon(combat.weaponMode());
+        if (running && combat.droneShotsFired() != lastDroneShot)
+            droneShot.play();
         if (running && weaponUpgraded)
             upgrade.play();
         if (running && combat.precisionRefills() > lastPrecisionRefill)
@@ -209,6 +223,7 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
     lastLifeRecovery = combat.lifeRecoveries();
     lastLifeWarning = combat.lifeRecoveryWarnings();
     lastVolley = combat.volleysFired();
+    lastDroneShot = combat.droneShotsFired();
     if (!combat.explosions().empty())
         lastExplosion = combat.explosions().back().seed;
 }
