@@ -15,6 +15,8 @@ using Color = sf::Color;
 using Batch = std::vector<sf::Vertex>;
 constexpr Color shadow{24, 34, 48}, steel{81, 111, 123}, metal{154, 173, 167};
 constexpr Color brass{219, 153, 76}, amber{252, 213, 122}, cyan{111, 220, 220};
+constexpr float lightsOn = 1.65f;
+constexpr float lensOffset = 9.f;
 struct DeckFire { float x, size; };
 constexpr std::array<DeckFire, 4> deckFires{{{69.f, 1.12f}, {158.f, 1.52f}, {202.f, 0.86f}, {291.f, 1.28f}}};
 
@@ -156,7 +158,7 @@ void spotlightHead(Batch& batch, Vec position, Vec dir, float baseY, bool broken
         box(batch, position + Vec{2, 7}, 3, 2, {161, 85, 52});
         return;
     }
-    const Vec tip = position + dir * 9.f;
+    const Vec tip = position + dir * lensOffset;
     stroke(batch, position - dir * 5.f, tip, 5.2f, hit ? Color::White : shadow);
     stroke(batch, position - dir * 4.f, tip, 3.4f, hit ? Color::White : steel);
     stroke(batch, tip - dir * 2.f, tip + dir, 4.f, amber);
@@ -171,13 +173,14 @@ void drawCarrierSky(sf::RenderTarget& target, const Combat& combat)
     if (!intro && raid.phase != CarrierPhase::Battle)
         return;
     Batch batch;
-    const float power = intro ? std::clamp((raid.age - 1.65f) / 0.95f, 0.f, 1.f) : 0.82f;
+    const float power = intro ? std::clamp((raid.age - lightsOn) / 0.95f, 0.f, 1.f) : 0.82f;
     for (unsigned i = 0; i < 2; ++i)
     {
         if (raid.destroyed[1 + i])
             continue;
         const Vec position = raid.mount(i ? CarrierPart::AftLight : CarrierPart::ForwardLight);
-        lampBeam(batch, position, lightDirection(raid, i), power);
+        const Vec direction = lightDirection(raid, i);
+        lampBeam(batch, position + direction * lensOffset, direction, power);
     }
     if (!intro && raid.salvoCharge >= raid.lockAt())
     {
@@ -205,9 +208,13 @@ void drawCarrier(sf::RenderTarget& target, const Combat& combat, const sf::Textu
 {
     const auto& raid = combat.carrierRaid();
     const bool intro = raid.phase == CarrierPhase::Approach, sinking = raid.phase == CarrierPhase::Sinking;
-    if ((!intro && !sinking && raid.phase != CarrierPhase::Battle) || (intro && raid.age < 4.75f))
+    if (!intro && !sinking && raid.phase != CarrierPhase::Battle)
         return;
-    const float reveal = intro ? std::clamp((raid.age - 4.75f) / 0.72f, 0.f, 1.f) : 1.f;
+    // Bring the hull and lamp towers out of the blackout before their first beams appear.
+    constexpr float silhouetteFade = 0.9f;
+    const float reveal = intro ? std::clamp(1.f + (raid.age - lightsOn) / silhouetteFade, 0.f, 1.f) : 1.f;
+    if (reveal <= 0.f)
+        return;
     const float sink = sinking ? std::min(1.f, raid.age / CarrierRaid::sinkDuration) : 0.f;
     const Vec origin = raid.position - CarrierRaid::spriteOrigin;
     const float water = raid.position.y + 17.f;
@@ -229,7 +236,7 @@ void drawCarrier(sf::RenderTarget& target, const Combat& combat, const sf::Textu
     }
     draw(target, batch);
     batch.clear();
-    const float illumination = intro ? 0.28f + 0.52f * std::max(0.f, 1.f - std::abs(raid.age - 6.f))
+    const float illumination = intro ? 0.40f + 0.40f * std::max(0.f, 1.f - std::abs(raid.age - 6.f))
                                      : std::clamp(0.40f + raid.age * 0.75f, 0.40f, 1.f);
     Color tint{static_cast<std::uint8_t>(226.f * illumination), static_cast<std::uint8_t>(235.f * illumination),
                static_cast<std::uint8_t>(250.f * illumination), light(Color::White, reveal).a};

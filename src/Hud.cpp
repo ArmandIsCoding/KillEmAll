@@ -95,16 +95,18 @@ void carrierMeter(sf::RenderTarget& target, const sf::Font& font, const Combat& 
     const bool secondPhase = raid.deckBurning() && raid.phase == CarrierPhase::Battle;
     rect(target, 265, 63, 3, 42, secondPhase ? gold : cyan);
     label(target, font, "PORTAAVIONES", 276, 69, 10, ivory);
-    rect(target, 398, 68, 242, 12, seam);
-    rect(target, 400, 70, 238, 8, ink);
+    label(target, font, "CASCO", 398, 71, 7, ivory);
+    constexpr float hullX = 442.f, hullWidth = 196.f;
+    rect(target, hullX - 2, 68, hullWidth + 4, 12, seam);
+    rect(target, hullX, 70, hullWidth, 8, ink);
     const float life = static_cast<float>(raid.health) / raid.maxHealth;
-    const float fill = std::ceil(238.f * life);
-    rect(target, 400, 70, fill, 8, {190, 82, 68});
-    rect(target, 400, 70, fill, 2, {255, 186, 130});
+    const float fill = std::ceil(hullWidth * life);
+    rect(target, hullX, 70, fill, 8, {190, 82, 68});
+    rect(target, hullX, 70, fill, 2, {255, 186, 130});
     if (secondPhase)
         label(target, font, "FASE II", 574, 70, 8, gold);
     else if (raid.phase == CarrierPhase::Battle)
-        rect(target, 400.f + 238.f * CarrierRaid::fireThreshold, 70, 2, 8, gold);
+        rect(target, hullX + hullWidth * CarrierRaid::fireThreshold, 70, 2, 8, gold);
     const auto percent = std::to_string(static_cast<int>(std::ceil(100.f * life))) + "%";
     label(target, font, percent, 686.f - 10.f * static_cast<float>(percent.size()), 69, 10, ivory);
 

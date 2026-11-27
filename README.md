@@ -115,11 +115,11 @@ Podés apuntar al casco para hundir el barco o a una torreta para desactivar ese
 
 ### El asalto de la primera noche
 
-A los **2:20 de vuelo**, las luces de las grúas se apagan de izquierda a derecha y sus reflejos desaparecen del agua. La música baja hasta que se oye un pulso grave. Dos reflectores barren las nubes y dejan ver la silueta del **portaaviones**. Tenés ocho segundos para tomar posición antes de que abra fuego.
+A los **2:20 de vuelo**, las luces de las grúas se apagan de izquierda a derecha y sus reflejos desaparecen del agua. La música baja hasta que se oye un pulso grave. En el agua se distingue la cubierta del **portaaviones** antes de que sus dos reflectores empiecen a barrer las nubes. Tenés ocho segundos para tomar posición antes de que abra fuego.
 
-![Se apagan las luces del puerto, los reflectores descubren al portaaviones y el casco se hunde tras el combate.](docs/media/asalto-nocturno.gif)
+![El portaaviones aparece durante el apagón, enciende los reflectores de proa y popa y lanza sus cazas.](docs/media/asalto-nocturno.gif)
 
-La barra del jefe muestra la integridad del casco y la de sus tres sistemas. Podés elegir a qué altura entrar y qué destruir primero.
+La barra **CASCO** marca cuándo se incendiará la cubierta. Debajo ves la vida de la catapulta y de cada reflector. Destruir uno de esos sistemas desactiva su ataque. Para llegar a la fase de incendio, apuntá directamente al casco.
 
 | Blanco | Qué cambia al destruirlo |
 | --- | --- |
