@@ -69,9 +69,22 @@ sf::Vector2f CarrierRaid::readyFighter(unsigned index) const
     return position - spriteOrigin + Vec{90.f + 45.f * index - rail * 44.f, 40.f};
 }
 
-int CarrierRaid::partHealth(CarrierPart part)
+int CarrierRaid::partHealth(CarrierPart part) const
 {
-    return part == CarrierPart::Hull ? maxHealth : part == CarrierPart::Catapult ? 60 : 40;
+    if (part == CarrierPart::Hull)
+        return maxHealth;
+    return part == CarrierPart::Catapult ? 40 + maxHealth / 12 : 25 + maxHealth / 18;
+}
+
+float CarrierRaid::salvoPeriod() const
+{
+    return (7.6f - 1.7f * lights()) * (deckBurning() ? 0.52f : 1.f);
+}
+
+float CarrierRaid::lockAt() const
+{
+    // Even with both searchlights the final barrage gives the pilot 0.8 seconds to break away.
+    return std::min(0.30f + 0.25f * lights(), 1.f - 0.8f / salvoPeriod());
 }
 
 sf::Vector2f CarrierRaid::nearestHullPoint(Vec point) const
@@ -134,13 +147,18 @@ void Combat::updateCarrier(float dt, Vec player)
             return;
         raid.phase = CarrierPhase::Battle;
         raid.age = 0.f;
+        // Set armor once on arrival so subsequent upgrades still give the pilot an advantage.
+        raid.maxHealth = weaponMode_ == WeaponMode::Arsenal
+            ? 1200 + 180 * weaponRank_ + 200 * droneUpgrades_
+            : CarrierRaid::baseHealth + 24 * weaponRank_;
+        raid.health = raid.maxHealth;
         for (auto part :
              {CarrierPart::Catapult, CarrierPart::ForwardLight, CarrierPart::AftLight, CarrierPart::Hull})
         {
             const auto p = raid.mount(part);
             const auto kind = part == CarrierPart::Hull ? EnemyKind::CarrierHull : EnemyKind::CarrierPart;
             const float radius = part == CarrierPart::Catapult ? 14.f : 11.f;
-            Enemy e{kind, p, {}, radius, 0.f, CarrierRaid::partHealth(part), p.y, 0.f, 0.f, 0, 0.f};
+            Enemy e{kind, p, {}, radius, 0.f, raid.partHealth(part), p.y, 0.f, 0.f, 0, 0.f};
             e.carrierPart = part;
             enemies_.push_back(e);
         }
@@ -165,8 +183,8 @@ void Combat::updateCarrier(float dt, Vec player)
     }
     const int lights = raid.lights();
     // With fewer spotters the gunners commit to an older bearing and need longer to reload.
-    raid.salvoCharge += dt / (7.6f - 1.7f * lights);
-    if (raid.salvoCharge < CarrierRaid::lockAt(lights))
+    raid.salvoCharge += dt / raid.salvoPeriod();
+    if (raid.salvoCharge < raid.lockAt())
         raid.salvoTarget = player;
     if (raid.salvoCharge < 1.f)
         return;
@@ -175,8 +193,8 @@ void Combat::updateCarrier(float dt, Vec player)
         const auto p = raid.deckGun(i);
         const auto aim = raid.salvoTarget - p;
         if ((player - p).lengthSquared() > 80.f * 80.f)
-            fireEnemyFan(p, std::atan2(aim.y, aim.x), 1 + lights, 0.14f, 179.f + lights * 17.f, ShotKind::EnemyOrb,
-                         5.f);
+            fireEnemyFan(p, std::atan2(aim.y, aim.x), 1 + lights + int(raid.deckBurning()), 0.14f,
+                         179.f + lights * 17.f + (raid.deckBurning() ? 24.f : 0.f), ShotKind::EnemyOrb, 5.f);
     }
     ++raid.salvos;
     raid.salvoCharge = 0.f;
@@ -192,7 +210,12 @@ void Combat::damageCarrier(Enemy& enemy, int amount, Vec hit, unsigned chainId)
     const bool hull = enemy.kind == EnemyKind::CarrierHull;
     if (hull)
     {
+        const bool wasBurning = raid.deckBurning();
         raid.health = enemy.health;
+        // The burning deck immediately signals its opening broadside. Give even a high-damage
+        // pilot time to see the target lock and move before the guns discharge.
+        if (!wasBurning && raid.deckBurning())
+            raid.salvoCharge = std::max(raid.lockAt(), 1.f - 1.05f / raid.salvoPeriod());
         if (raid.hitFlash <= 0.f)
         {
             raid.hitFlash = 0.10f;

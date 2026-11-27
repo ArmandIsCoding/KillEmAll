@@ -44,18 +44,18 @@ Debajo de **ARSENAL** podés ver cuánto falta para el segundo robot. Con el **t
 
 Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno vuelo y dejan una estela que se afina y se apaga detrás de ellos. Con más proyectiles por segundo, el ángulo de salida varía más, los arcos son más frecuentes y las estelas brillan más. En la última etapa del cañón también desprenden chispas doradas. Los verdes siguen su propio zigzag.
 
-### Diez rangos por bajas
+### Rangos por bajas sin límite
 
-El primer rango llega con **6 bajas**. Los siguientes se alcanzan a las **18, 36, 64, 100, 150, 220, 320, 460 y 660**. También cuentan las bajas de los robots y las explosiones en cadena. Con las tres vidas llenas seguís sumando para el arma.
+El primer rango llega con **6 bajas**. Los siguientes se alcanzan a las **18, 36, 64, 100, 150, 220, 320, 460 y 660**. Después de R10, necesitás otras **200 bajas** para R11, **220** para R12 y **240** para R13. Cada nuevo ascenso pide 20 bajas más que el anterior. También cuentan las bajas de los robots y las explosiones en cadena. Con las tres vidas llenas seguís sumando para el arma.
 
 | Arma | Qué cambia con el rango |
 | --- | --- |
-| Cañón | Las salvas ganan pares de tiros dorados, más apertura y curvas más pronunciadas. Una vez habilitadas las ondas verdes, pueden salir hasta seis juntas. |
-| Misiles | Los lanzadores pasan de alternar un misil a abrir hasta seis en abanico, cada uno con su propia estela de fuego y humo. |
-| Láser | Al haz central se le suman pares laterales hasta un máximo de nueve. Con **Espacio** el abanico se cierra sobre el blanco marcado. Cada haz se corta donde toca el acorazado. Si varios alcanzan el mismo blanco, recibe un solo impacto por pulso. |
-| Arsenal y robots | Los osciladores pasan de siete a **27 dardos por ciclo**. A mayor rango, sus ondas se abren más y varían la velocidad y la trayectoria de cada tiro. Cada robot puede disparar hasta **cuatro tiros** a distintos puntos del enemigo que está siguiendo. |
+| Cañón | Gana pares de tiros dorados y ondas verdes. Los dorados salen a distintas velocidades y algunos se arquean. Las ondas verdes también varían de ritmo. |
+| Misiles | En R10 salen seis por salva y en R20 salen once. Cada misil acelera y se desvía con su propio ángulo y curvatura. |
+| Láser | El haz central marca el rumbo. Los laterales cambian de ángulo en cada pulso. Son nueve haces en R10 y quince en R20. Con **Espacio** se concentran en el blanco. Cada haz se corta al tocar un casco y cada blanco recibe un impacto por pulso. |
+| Arsenal y robots | Los osciladores lanzan **27 dardos por ciclo en R10** y **47 en R20**. Aumentan las diferencias de velocidad, apertura y ritmo entre sus ondas. En esos mismos rangos, cada robot pasa de cuatro a seis tiros por descarga, apuntados a distintas partes de su blanco. |
 
-En R10 el tiempo entre descargas es un **15 % menor** que en R0 con los mismos potenciadores.
+En R10 el tiempo entre descargas es un **15 % menor** que en R0 con los mismos potenciadores. La cantidad de proyectiles y haces que ya hay en pantalla también influye en los disparos nuevos de ambos bandos. Incluso dentro del mismo rango y la misma oleada, las trayectorias se vuelven más irregulares cuando se llena el cielo.
 
 ## Controles
 
@@ -89,7 +89,9 @@ Desde los **2 minutos y 20 segundos de vuelo** es noche cerrada. Al otro lado de
 
 ![De izquierda a derecha, tu avión, el explorador rojo de 100 puntos, el interceptor de 200 y el blindado de 500.](docs/media/hangar.png)
 
-Al comienzo, el **explorador** apunta a tu posición, el **interceptor** abre un abanico de tres y el **blindado** alterna el ángulo de sus siete orbes. A los **40, 90, 160, 260 y 420 segundos de vuelo** se ensanchan los patrones de ataque. En las últimas oleadas un blindado puede soltar **13 orbes** en una descarga. Las lanchas y las tres baterías del acorazado también ganan proyectiles.
+Al comienzo, el **explorador** apunta a tu posición, el **interceptor** abre un abanico de tres y el **blindado** alterna el ángulo de sus siete orbes. Todos los cañones enemigos, incluidos los navales, siguen ganando pares de proyectiles con el tiempo de vuelo. En una de sus salvas, un blindado pasa de **7 orbes al despegar** a **19 a los 7 minutos** y **25 a los 15 minutos**.
+
+En cada abanico, el tiro central sigue el rumbo apuntado. Los laterales varían de ángulo y velocidad y pueden curvarse hacia cualquiera de los lados durante los primeros **1,1 segundos**. La estela rosa muestra de dónde vienen. Con **Shift** también se ralentizan estas curvas.
 
 Al despegar recorrés **105 m/s** y llega una formación aérea aproximadamente cada tres segundos. A los cinco minutos recorrés unos **260 m/s**, con una formación por segundo fuera de los encuentros con el jefe. Las escuadras tardías traen refuerzos a otra altura y las lanchas cruzan más seguido. Durante el duelo con el acorazado hay más espacio entre formaciones.
 
@@ -121,9 +123,15 @@ La barra del jefe muestra la integridad del casco y la de sus tres sistemas. Pod
 
 | Blanco | Qué cambia al destruirlo |
 | --- | --- |
-| Catapulta de proa · 60 de vida | Cancela los despegues pendientes y las próximas escuadrillas. Los cazas que ya despegaron siguen peleando. |
-| Reflectores de proa y popa · 40 cada uno | Cada foco que apagás reduce los proyectiles de la andanada y hace que los cañones fijen tu posición más temprano. Cuando aparece la cruz de puntería, podés salirte de esa línea. |
-| Casco · 300 de vida | Hundís el portaaviones y ganás 2500 puntos. Cada sistema que hayas destruido antes te da otros 350. |
+| Catapulta de proa | Cancela los despegues pendientes y las próximas escuadrillas. Los cazas que ya despegaron siguen peleando. |
+| Reflectores de proa y popa | Cada foco que apagás reduce los proyectiles de la andanada y hace que los cañones fijen tu posición más temprano. Cuando aparece la cruz de puntería, podés salirte de esa línea. |
+| Casco | Hundís el portaaviones y ganás 2500 puntos. Cada sistema que hayas destruido antes te da otros 350. |
+
+El blindaje del casco y de sus piezas se fija cuando empieza el combate según el arma, el rango y las mejoras de los robots. Por ejemplo, si llegás con **Arsenal R8 y cuatro mejoras**, el casco tiene **3440 puntos de vida**. Las mejoras que ganes durante la pelea te dan ventaja sobre ese blindaje.
+
+Al **35 % de casco** se incendia la cubierta y aparece **FASE II** sobre la barra. Las baterías abren fuego casi al doble de ritmo y agregan tiros laterales. Con ambos reflectores intactos pasa de **4,2 a 2,2 segundos** entre andanadas. Si apagás ambos, en la segunda fase tenés **4 segundos** entre salvas. Esperá la cruz de puntería y cambiá de altura para salir del tiro central.
+
+![La cubierta se prende fuego al 35 %, el portaaviones abre su andanada y los proyectiles se multiplican más adelante en la partida.](docs/media/cubierta-en-llamas.gif)
 
 Los osciladores del Arsenal se contestan en estéreo y las bajas en cadena suman percusión a la música del puerto. Cuando el portaaviones se hunde, se escucha un segundo de oleaje antes de que entre la fanfarria y vuelvan las luces del muelle. [Escuchá el oleaje y la fanfarria](assets/arcade/audio/carrier-victory.wav).
 

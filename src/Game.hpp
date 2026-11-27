@@ -45,5 +45,5 @@ private:
     float powerNotice = 0.f;
     float pickupNotice = 0.f;
     float muzzleFlash = 0.f;
-    int bestScore = 0;
+    std::uint64_t bestScore = 0;
 };

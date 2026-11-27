@@ -4,6 +4,7 @@
 
 #include <SFML/System/Vector2.hpp>
 
+#include <cstdint>
 #include <deque>
 #include <limits>
 #include <optional>
@@ -55,6 +56,7 @@ struct Enemy
     FlightPath flight = FlightPath::Weave;
     TurretKind turretKind = TurretKind::Cannon;
     CarrierPart carrierPart = CarrierPart::Hull;
+    int spawnHealth = health;
 
     static constexpr float boatAimWarning = 0.48f;
     sf::Vector2f turretPivot() const;
@@ -90,8 +92,12 @@ struct Shot
     std::vector<TrailSample> trailHistory{};
     unsigned droneIndex = 0;
     unsigned weaponRank = 0;
+    sf::Vector2f enemyBend{}; // Lateral acceleration in pixels per world second squared.
+    static constexpr float enemyBendDuration = 1.1f;
+    float waveTempo = 1.f;
 
     bool isFriendly() const { return kind != ShotKind::Enemy && kind != ShotKind::EnemyOrb; }
+    sf::Vector2f enemyPastPosition(float lookback) const;
     int directDamage() const;
     bool hasTrail() const { return kind == ShotKind::Player && (verticalAcceleration != 0.f || !trailHistory.empty()); }
     TrailSample trailSample(float lookback) const;
@@ -160,7 +166,6 @@ public:
     static constexpr int killsPerLife = 50;
     static constexpr unsigned secondDroneUpgrade = 3;
     static constexpr unsigned maxDroneUpgrades = 4;
-    static constexpr unsigned maxWeaponRank = 10;
     static constexpr float playerHitRadius = 6.f;
     static constexpr float arsenalShieldHeight = 39.f; // Half the height of the frontal arc.
     static constexpr float shieldTipStart = 0.72f; // Fraction of the half-arc at which a catch charges a tip.
@@ -215,10 +220,10 @@ public:
     sf::Vector2f screenShakeOffset() const;
     const std::optional<FireRatePickup>& fireRatePickup() const { return fireRatePickup_; }
     unsigned pickupsCollected() const { return pickupsCollected_; }
-    int score() const { return score_; }
-    unsigned enemiesDestroyed() const { return enemiesDestroyed_; }
+    std::uint64_t score() const { return score_; }
+    std::uint64_t enemiesDestroyed() const { return enemiesDestroyed_; }
     unsigned weaponRank() const { return weaponRank_; }
-    std::optional<unsigned> nextWeaponRankKills() const;
+    std::uint64_t nextWeaponRankKills() const;
     Combo combo() const { return !gameOver() && elapsed_ < comboUntil_ ? lastCombo_ : Combo{}; }
     int comboMilestone() const { return gameOver() || milestones_.empty() ? 0 : milestones_.front(); }
     unsigned comboMilestoneSerial() const { return comboMilestone() ? finishedMilestones_ + 1 : 0; }
@@ -233,8 +238,8 @@ public:
     float lifeRecoveryGlow() const;
     int power() const;
     unsigned int volleysFired() const { return volleysFired_; }
-    float distance() const { return distance_; }
-    float elapsed() const { return elapsed_; }
+    double distance() const { return distance_; }
+    float elapsed() const { return static_cast<float>(elapsed_); }
     bool gameOver() const { return lives_ == 0; }
     bool invulnerable() const { return grace_ > 0.f; }
 
@@ -276,6 +281,9 @@ private:
     float effectiveFireRate() const;
     void fireLaser(sf::Vector2f muzzle);
     void fireMissileRack(sf::Vector2f muzzle);
+    float projectileDensity() const;
+    float weaponScatter(float base) const;
+    float weaponNoise();
     void fireVolley(sf::Vector2f muzzle);
     void fireSalvoBolt(sf::Vector2f muzzle);
     void catchShieldShot(float normalizedY);
@@ -318,8 +326,8 @@ private:
     WeaponMode weaponMode_ = WeaponMode::Cannon;
     unsigned droneUpgrades_ = 0;
     float nextPickup_ = nextPickupDelay();
-    int score_ = 0;
-    unsigned enemiesDestroyed_ = 0;
+    std::uint64_t score_ = 0;
+    std::uint64_t enemiesDestroyed_ = 0;
     unsigned weaponRank_ = 0;
     int lives_ = maxLives;
     int recoveryKills_ = 0;
@@ -327,8 +335,8 @@ private:
     unsigned lifeRecoveryWarnings_ = 0;
     unsigned lifeRecoveries_ = 0;
     float lastLifeRecoveryTime_ = -std::numeric_limits<float>::infinity();
-    float elapsed_ = 0.f;
-    float distance_ = 0.f;
+    double elapsed_ = 0.0;
+    double distance_ = 0.0;
     float grace_ = 0.f;
     sf::Vector2f arsenalMuzzle_{};
     float arsenalShieldFlash_ = 0.f;
@@ -340,7 +348,7 @@ private:
     float nextFormation_ = 0.f;
     float nextBoat_ = 9.f;
     float nextPulse_ = 0.f;
-    float weaponSince_ = 0.f;
+    double weaponSince_ = 0.0;
     std::vector<OrbitalDrone> drones_;
     std::vector<LaserPulse> laserPulses_;
     int burstRemaining_ = 0;

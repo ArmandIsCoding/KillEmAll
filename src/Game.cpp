@@ -152,7 +152,7 @@ void Game::drawPlayer()
     if (muzzleFlash > 0.f && (combat.weaponMode() == WeaponMode::Cannon || combat.weaponMode() == WeaponMode::Missiles))
     {
         const auto tip = position + player.muzzleOffset();
-        const float length = 8.f + (8.f + 0.9f * combat.weaponRank()) * muzzleFlash / 0.055f;
+        const float length = 8.f + (8.f + 0.9f * std::min(20u, combat.weaponRank())) * muzzleFlash / 0.055f;
         const sf::Vertex flash[]{
             {tip + sf::Vector2f{-2.f, -3.f}, {255, 176, 61}}, {tip + sf::Vector2f{length, 0.f}, {255, 247, 178}},
             {tip + sf::Vector2f{-2.f, 3.f}, {255, 176, 61}}

@@ -85,9 +85,9 @@ namespace
 		return static_cast<float>(state >> 8) / 16777216.f;
 	}
 
-	float wrap(float value, float period)
+	float wrap(double value, float period)
 	{
-		return value - period * std::floor(value / period);
+		return static_cast<float>(value - period * std::floor(value / period));
 	}
 
 	void lampReflection(Batch& batch, float x, float waterline, float length, float width,
@@ -175,7 +175,7 @@ namespace
 	}
 
 	// All panoramas tile across the atlas and extend past the sides of the shaken view.
-	void coastStrip(Batch& batch, float top, float bottom, float atlasTop, float atlasBottom, float scroll,
+	void coastStrip(Batch& batch, float top, float bottom, float atlasTop, float atlasBottom, double scroll,
 		Color tint = Color::White)
 	{
 		const float left = -coastMargin, right = sceneWidth + coastMargin;
@@ -208,7 +208,7 @@ namespace
 		float x, y, phase, threshold;
 	};
 
-	void eveningStars(Batch& batch, float time, float distance, float night)
+	void eveningStars(Batch& batch, float time, double distance, float night)
 	{
 		// Each star has a fixed magnitude so the same sky is revealed throughout a run.
 		static const auto stars = [] {
@@ -271,7 +271,7 @@ namespace
 		}
 	}
 
-	void water(Batch& batch, float time, float distance, float night)
+	void water(Batch& batch, float time, double distance, float night)
 	{
 		// A closer band of moving glints and navigation buoys tracks faster than the coast.
 		const float glint = 1.f - 0.56f * night;
@@ -1047,14 +1047,37 @@ namespace
 		}
 	}
 
+	// Leave room between luminous trails as the number of shots continues to grow.
+	float weaponGlow(unsigned rank)
+	{
+		if (rank <= 10)
+			return 0.1f * rank;
+		const float extra = static_cast<float>(rank - 10);
+		return 1.f + 0.6f * extra / (extra + 10.f);
+	}
+
 	void projectile(Batch& batch, const Shot& shot)
 	{
 		const Vec p = shot.position;
 		const float r = shot.radius;
 		const bool friendly = shot.isFriendly();
-		const float power = static_cast<float>(shot.weaponRank) / Combat::maxWeaponRank;
+		const float power = weaponGlow(shot.weaponRank);
 		const float wake = power * std::min(1.f, shot.age * 12.f);
 		const Vec direction = shot.velocity != Vec{} ? shot.velocity.normalized() : Vec{ 1.f, 0.f };
+
+		if (!friendly && shot.enemyBend != Vec{})
+		{
+			const float history = std::min(0.13f, shot.age);
+			Vec near = p;
+			for (int i = 1; i <= 2; ++i)
+			{
+				const Vec far = shot.enemyPastPosition(history * 0.5f * i);
+				if (far != near)
+					streak(batch, far, near, (near - far).normalized(), r * (i == 1 ? 0.52f : 0.3f),
+					       {255, 77, 139, static_cast<std::uint8_t>(i == 1 ? 115 : 60)});
+				near = far;
+			}
+		}
 
 		if (shot.kind == ShotKind::Braid)
 		{
@@ -1169,7 +1192,7 @@ namespace
 			return;
 		const Vec direction = segment.normalized();
 		const float glow = 1.f - pulse.age / LaserPulse::duration;
-		const float power = static_cast<float>(pulse.weaponRank) / Combat::maxWeaponRank;
+		const float power = weaponGlow(pulse.weaponRank);
 		streak(batch, pulse.origin, pulse.end, direction, 5.f + glow * (2.f + 3.f * power),
 		       faded({63, 142, 255}, (0.33f + power * 0.2f) * glow));
 		streak(batch, pulse.origin, pulse.end, direction, LaserPulse::radius, faded({92, 222, 255}, glow));
@@ -1333,12 +1356,12 @@ BattleRenderer::BattleRenderer(const std::filesystem::path& arcadeDirectory)
 void BattleRenderer::drawBackground(sf::RenderTarget& target, const Combat& combat)
 {
 	const float elapsedSeconds = combat.elapsed();
-	const float distance = combat.distance();
+	const double distance = combat.distance();
 	const float night = nightfall(elapsedSeconds);
 	const sf::RenderStates panorama(&coastLayers);
 
 	textured.clear();
-	const float skyOffset = distance * skyTravel;
+	const float skyOffset = wrap(distance * skyTravel, coastWidth);
 	const float sunsetDrop = std::round(166.f * night);
 	coastStrip(textured, -coastMargin, 0.f, 0.5f, 0.5f, skyOffset);
 	// Stretch only the empty sky above the solar disc so it descends behind the ridges at its original size.
@@ -1354,7 +1377,7 @@ void BattleRenderer::drawBackground(sf::RenderTarget& target, const Combat& comb
 	coastStrip(textured, 8.f, 213.f, 428.f, 633.f, distance * 0.050f, nightTint({123, 144, 192}, night));
 	coastStrip(textured, 0.f, 333.f, 635.f, 968.f, distance * 0.107f, nightTint({53, 75, 137}, night));
 	coastStrip(textured, 314.f, 427.f, 970.f, 1083.f, distance * 0.155f, nightTint({70, 83, 140}, night));
-	const float townOffset = distance * townTravel;
+	const float townOffset = wrap(distance * townTravel, coastWidth);
 	coastStrip(textured, 331.f, 427.f, 1085.f, 1181.f, townOffset, nightTint({66, 82, 131}, night));
 	const Color seaTint = nightTint({54, 96, 149}, night);
 	// Each depth band moves together so individual waves retain their shape over long runs.
@@ -1372,13 +1395,13 @@ void BattleRenderer::drawBackground(sf::RenderTarget& target, const Combat& comb
 	drawBatch(target, textured, panorama);
 
 	geometry.clear();
-	sunsetReflection(geometry, elapsedSeconds, distance, night);
+	sunsetReflection(geometry, elapsedSeconds, static_cast<float>(distance), night);
 	const auto& raid = combat.carrierRaid();
 	distantHarbourLights(geometry, elapsedSeconds, townOffset, night, raid);
 	drawBatch(target, geometry);
 
 	textured.clear();
-	const float harbourOffset = distance * harbourTravel;
+	const float harbourOffset = wrap(distance * harbourTravel, coastWidth);
 	const Color portTint = nightTint({94, 104, 142}, night);
 	coastStrip(textured, 228.f, 444.f, 1300.f, 1516.f, harbourOffset, portTint);
 	for (int y = 444; y < 534; y += 5)

@@ -40,7 +40,7 @@ void label(sf::RenderTarget& target, const sf::Font& font, const sf::String& str
     target.draw(text);
 }
 
-std::string scoreNumber(int points)
+std::string scoreNumber(std::uint64_t points)
 {
     auto number = std::to_string(points);
     if (number.size() < 6)
@@ -92,14 +92,19 @@ void carrierMeter(sf::RenderTarget& target, const sf::Font& font, const Combat& 
 {
     const auto& raid = combat.carrierRaid();
     rect(target, 265, 63, 430, 42, {15, 27, 34, 242});
-    rect(target, 265, 63, 3, 42, cyan);
+    const bool secondPhase = raid.deckBurning() && raid.phase == CarrierPhase::Battle;
+    rect(target, 265, 63, 3, 42, secondPhase ? gold : cyan);
     label(target, font, "PORTAAVIONES", 276, 69, 10, ivory);
     rect(target, 398, 68, 242, 12, seam);
     rect(target, 400, 70, 238, 8, ink);
-    const float life = static_cast<float>(raid.health) / CarrierRaid::maxHealth;
+    const float life = static_cast<float>(raid.health) / raid.maxHealth;
     const float fill = std::ceil(238.f * life);
     rect(target, 400, 70, fill, 8, {190, 82, 68});
     rect(target, 400, 70, fill, 2, {255, 186, 130});
+    if (secondPhase)
+        label(target, font, "FASE II", 574, 70, 8, gold);
+    else if (raid.phase == CarrierPhase::Battle)
+        rect(target, 400.f + 238.f * CarrierRaid::fireThreshold, 70, 2, 8, gold);
     const auto percent = std::to_string(static_cast<int>(std::ceil(100.f * life))) + "%";
     label(target, font, percent, 686.f - 10.f * static_cast<float>(percent.size()), 69, 10, ivory);
 
@@ -224,15 +229,17 @@ void pausePanel(sf::RenderTarget& target, const sf::Font& font, bool muted, Weap
     label(target, font, U"SI AGOT\u00c1S UNA BARRA, ESPER\u00c1 LA RECARGA COMPLETA.", 243, 476, 9, dim);
 }
 
-void endPanel(sf::RenderTarget& target, const sf::Font& font, int score, int bestScore, int bestCombo)
+void endPanel(sf::RenderTarget& target, const sf::Font& font, std::uint64_t score, std::uint64_t bestScore, int bestCombo)
 {
     panel(target, 216, 170, 528, 292, gold);
     label(target, font, "FIN DE PARTIDA", 248, 200, 27, ivory);
     rect(target, 248, 250, 464, 2, seam);
     label(target, font, "PUNTOS", 248, 273, 9, dim);
-    label(target, font, scoreNumber(score), 248, 297, 24, gold);
+    const auto points = scoreNumber(score);
+    label(target, font, points, 248, 297, std::min(24u, 218u / static_cast<unsigned>(points.size())), gold);
     label(target, font, U"R\u00c9CORD DE SESI\u00d3N", 487, 273, 9, dim);
-    label(target, font, scoreNumber(std::max(score, bestScore)), 487, 299, 19, ivory);
+    const auto record = scoreNumber(std::max(score, bestScore));
+    label(target, font, record, 487, 299, std::min(19u, 225u / static_cast<unsigned>(record.size())), ivory);
     label(target, font, "MEJOR COMBO", 248, 343, 10, dim);
     label(target, font, bestCombo > 0 ? "x" + std::to_string(bestCombo) : "NINGUNO", 388, 339, 16, cyan);
     rect(target, 248, 374, 464, 2, seam);
@@ -251,7 +258,7 @@ Hud::Hud(const std::filesystem::path& arcadeDir)
 }
 
 void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool muted,
-               int bestScore, bool powerNotice, bool pickupNotice) const
+               std::uint64_t bestScore, bool powerNotice, bool pickupNotice) const
 {
     rect(target, 0, 0, 960, 60, ink);
     rect(target, 0, 2, 960, 2, steel);
@@ -329,8 +336,12 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     }
     label(target, font, weaponName, 295, 8, 12, weaponColor);
     const std::string rank = "R" + std::to_string(combat.weaponRank());
-    rect(target, 390, 6, 33, 15, powerNotice ? weaponColor : steel);
-    label(target, font, rank, 406.f - 4.5f * static_cast<float>(rank.size()), 9, 9, powerNotice ? ink : ivory);
+    const auto rankLength = static_cast<unsigned>(rank.size());
+    const auto rankSize = std::min(9u, 39u / rankLength);
+    const float badgeWidth = std::max(33.f, 4.f + rankSize * static_cast<float>(rankLength));
+    rect(target, 423.f - badgeWidth, 6, badgeWidth, 15, powerNotice ? weaponColor : steel);
+    label(target, font, rank, 423.f - (badgeWidth + rankSize * rankLength) * 0.5f,
+          9, rankSize, powerNotice ? ink : ivory);
     if (mode == WeaponMode::Arsenal)
     {
         const unsigned upgrades = combat.droneUpgrades();
@@ -339,7 +350,7 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
             status = sf::String(U"2\u00ba ROBOT ") + std::to_string(upgrades) + "/" +
                      std::to_string(Combat::secondDroneUpgrade);
         else
-            status = upgrades == Combat::maxDroneUpgrades ? U"D\u00daO AL M\u00c1XIMO" : U"D\u00daO EN \u00d3RBITA";
+            status = U"D\u00daO EN \u00d3RBITA";
         label(target, font, status, 295, 25, 9, weaponColor);
     }
     else
@@ -359,11 +370,15 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
         label(target, font, "ARMA MEJORADA", 295, 40, 8, ivory);
     else if (pickupNotice)
         label(target, font, mode == WeaponMode::Cannon ? "CADENCIA +50%" : "POTENCIADOR", 295, 40, 8, cyan);
-    else if (const auto next = combat.nextWeaponRankKills())
-        label(target, font, std::to_string(combat.enemiesDestroyed()) + "/" + std::to_string(*next) + " BAJAS",
-              295, 40, 8, dim);
     else
-        label(target, font, U"RANGO M\u00c1XIMO", 295, 40, 8, gold);
+    {
+        const auto kills = combat.enemiesDestroyed();
+        const auto next = combat.nextWeaponRankKills();
+        auto progress = std::to_string(kills) + "/" + std::to_string(next) + " BAJAS";
+        if (progress.size() > 16)
+            progress = "FALTAN " + std::to_string(next - kills);
+        label(target, font, progress, 295, 40, std::min(8u, 128u / static_cast<unsigned>(progress.size())), dim);
+    }
 
     const auto refillFlash = [flying](float age) {
         return flying ? std::clamp((0.30f - age) / 0.24f, 0.f, 1.f) : 0.f;

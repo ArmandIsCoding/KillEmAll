@@ -25,11 +25,19 @@ constexpr float shieldTipWindow = 1.8f;
 constexpr float braidWindupSeconds = 0.18f;
 constexpr float burstSpacing = 0.105f;
 constexpr float singleReload = 0.23f;
-constexpr std::array<unsigned, Combat::maxWeaponRank> weaponRankKills{6, 18, 36, 64, 100, 150, 220, 320, 460, 660};
+constexpr std::array<unsigned, 10> weaponRankKills{6, 18, 36, 64, 100, 150, 220, 320, 460, 660};
+
+// Count keeps growing with rank. Keep direction changes within a forward firing arc.
+float spreadStrength(unsigned rank)
+{
+    return rank / (rank + 18.f);
+}
 
 float rankedReload(float base, unsigned rank)
 {
-    return base * (1.f - 0.015f * rank);
+    if (rank <= weaponRankKills.size())
+        return base * (1.f - 0.015f * rank);
+    return base * (0.85f - 0.17f * spreadStrength(rank - static_cast<unsigned>(weaponRankKills.size())));
 }
 
 struct BatteryStats
@@ -61,7 +69,7 @@ float flightPressure(float elapsed)
     return time / (time + 150.f);
 }
 
-int barrageStage(float elapsed)
+int barrageStage(double elapsed)
 {
     constexpr std::array<float, 5> thresholds{40.f, 90.f, 160.f, 260.f, 420.f};
     return static_cast<int>(std::upper_bound(thresholds.begin(), thresholds.end(), elapsed) - thresholds.begin());
@@ -108,7 +116,7 @@ constexpr EnemyStats stats(EnemyKind kind)
         case EnemyKind::PatrolBoat: return {22.f, 5, 86.f, 1.8f, 3.f, 2.6f, 300};
         case EnemyKind::BattleshipTurret: return {15.f, Battleship::turretHealth, 0.f, 0.f, 0.f, 0.f, 250};
         case EnemyKind::CarrierPart: return {12.f, 40, 0.f, 0.f, 0.f, 0.f, 350};
-        case EnemyKind::CarrierHull: return {16.f, CarrierRaid::maxHealth, 0.f, 0.f, 0.f, 0.f, 2500};
+        case EnemyKind::CarrierHull: return {16.f, CarrierRaid::baseHealth, 0.f, 0.f, 0.f, 0.f, 2500};
     }
     return {};
 }
@@ -265,11 +273,11 @@ float waveOffset(float age, float phase)
     return 31.f * triangle + 8.f * std::sin(17.f * age + phase);
 }
 
-float salvoOffset(float age, float phase, unsigned rank)
+float salvoOffset(float age, const Shot& shot)
 {
     // Start exactly on the moving emitter, then widen the two crossing streams downrange.
-    const float amplitude = emitterTravel + (24.f + 5.8f * rank) * std::min(age, 1.65f);
-    return amplitude * std::sin(phase - 7.4f * age);
+    const float amplitude = emitterTravel + (24.f + 162.f * spreadStrength(shot.weaponRank)) * std::min(age, 1.65f);
+    return amplitude * std::sin(shot.wavePhase - 7.4f * shot.waveTempo * age);
 }
 
 void recordTrail(Shot& shot)
@@ -307,9 +315,7 @@ void steerShot(Shot& shot, const Enemy& target, float dt)
 
 int Enemy::maxHealth() const
 {
-    if (kind == EnemyKind::CarrierPart)
-        return CarrierRaid::partHealth(carrierPart);
-    return stats(kind).health;
+    return spawnHealth;
 }
 
 sf::Vector2f Battleship::mountPosition(TurretKind kind) const
@@ -356,6 +362,13 @@ sf::Vector2f Enemy::turretDirection() const
 {
     const auto offset = turretTarget - turretPivot();
     return offset.lengthSquared() > 0.f ? offset.normalized() : sf::Vector2f{0.f, -1.f};
+}
+
+sf::Vector2f Shot::enemyPastPosition(float lookback) const
+{
+    const float back = std::clamp(lookback, 0.f, age);
+    const float bent = std::clamp(enemyBendDuration - (age - back), 0.f, back);
+    return position - velocity * back + enemyBend * (0.5f * bent * bent);
 }
 
 int Shot::directDamage() const
@@ -425,8 +438,8 @@ const Enemy* Combat::guidanceTarget(const Enemy* excluded) const
         if (&enemy == excluded || !isVisibleTarget(enemy))
             continue;
         // Equal classes retain formation order instead of switching on every hit.
-        const auto priority = [](const Enemy& target) {
-            return target.kind == EnemyKind::CarrierPart ? CarrierRaid::maxHealth + 1 : target.maxHealth();
+        const auto priority = [this](const Enemy& target) {
+            return target.kind == EnemyKind::CarrierPart ? carrierRaid_.maxHealth + 1 : target.maxHealth();
         };
         if (!best || priority(enemy) > priority(*best))
             best = &enemy;
@@ -464,11 +477,17 @@ int Combat::power() const
     return 1 + static_cast<int>(std::upper_bound(upgrades.begin(), upgrades.end(), elapsed_) - upgrades.begin());
 }
 
-std::optional<unsigned> Combat::nextWeaponRankKills() const
+std::uint64_t Combat::nextWeaponRankKills() const
 {
-    if (weaponRank_ == maxWeaponRank)
-        return {};
-    return weaponRankKills[weaponRank_];
+    if (weaponRank_ < weaponRankKills.size())
+        return weaponRankKills[weaponRank_];
+    // R11 costs 200 kills, R12 costs 220, then each step costs 20 more.
+    const std::uint64_t n = weaponRank_ + std::uint64_t{1} - weaponRankKills.size();
+    const std::uint64_t cost = 190 + 10 * n;
+    constexpr auto maxKills = std::numeric_limits<std::uint64_t>::max();
+    if (n > (maxKills - weaponRankKills.back()) / cost)
+        return maxKills;
+    return weaponRankKills.back() + n * cost;
 }
 
 sf::Vector2f Combat::arsenalShieldPoint(sf::Vector2f muzzle, float normalizedY)
@@ -612,7 +631,7 @@ void Combat::step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffs
         *recoveryBlinkPhase_ = std::fmod(*recoveryBlinkPhase_ + dt / period, 1.f);
     }
     const float pressure = flightPressure(elapsed_);
-    const float opening = std::min(elapsed_, openingDuration);
+    const float opening = std::min(elapsed(), openingDuration);
     distance_ += dt * (105.f + 0.5f * opening + 220.f * pressure);
     grace_ = std::max(0.f, grace_ - dt);
     updateCarrier(dt, playerPosition);
@@ -733,7 +752,7 @@ void Combat::spawnFormation()
 
 void Combat::updateEnemies(float dt, sf::Vector2f playerPosition)
 {
-    const float fireRate = 1.f + 0.004f * std::min(elapsed_, openingDuration) + 0.82f * flightPressure(elapsed_);
+    const float fireRate = 1.f + 0.004f * std::min(elapsed(), openingDuration) + 0.82f * flightPressure(elapsed_);
     for (auto& enemy : enemies_)
     {
         enemy.age += dt;
@@ -773,9 +792,28 @@ void Combat::updateEnemies(float dt, sf::Vector2f playerPosition)
 
 void Combat::fireEnemyFan(sf::Vector2f muzzle, float angle, int pairs, float spacing, float speed, ShotKind kind, float radius)
 {
-    // Extra pairs widen the fan while preserving the gaps a pilot can dodge through.
+    // Every naval and airborne gun adds another pair at 75, 180, 315, 480 ... world seconds.
+    pairs += static_cast<int>(2.0 * (std::sqrt(1.0 + elapsed_ / 60.0) - 1.0));
+    const float laneSpacing = pairs > 0 ? std::min(spacing, 1.35f / pairs) : 0.f;
+    const float maturity = static_cast<float>(elapsed_ / (elapsed_ + 150.0));
+    const float variation = maturity * (0.48f + 0.34f * pairs / (pairs + 3.f) + 0.18f * projectileDensity());
+    std::uniform_real_distribution<float> jitter(-1.f, 1.f);
     for (int i = -pairs; i <= pairs; ++i)
-        shots_.push_back({kind, muzzle, velocityAt(angle + spacing * i, speed), radius, 0.f, 0.f});
+    {
+        if (i == 0)
+        {
+            // Keep the aimed round on the bearing shown by a naval gun's warning.
+            shots_.push_back({kind, muzzle, velocityAt(angle, speed), radius, 0.f, 0.f});
+            continue;
+        }
+        const float heading = angle + laneSpacing * i + jitter(flightRandom_) * variation * (0.08f + 0.28f * spacing);
+        // Stagger neighbouring lanes in depth so dense fans still leave gaps to fly through.
+        const float speedBand = i % 2 == 0 ? -0.14f : 0.14f;
+        const auto velocity = velocityAt(heading, speed * (1.f + variation * (speedBand + 0.12f * jitter(flightRandom_))));
+        Shot shot{kind, muzzle, velocity, radius, 0.f, 0.f};
+        shot.enemyBend = velocity.perpendicular() * (0.82f * variation * jitter(flightRandom_));
+        shots_.push_back(shot);
+    }
 }
 
 void Combat::fireEnemy(Enemy& enemy, sf::Vector2f playerPosition)
@@ -783,7 +821,7 @@ void Combat::fireEnemy(Enemy& enemy, sf::Vector2f playerPosition)
     const auto muzzle = enemy.position + sf::Vector2f{enemy.velocity.x > 0.f ? enemy.radius : -enemy.radius, 0.f};
     const auto aim = playerPosition - muzzle;
     const float angle = std::atan2(aim.y, aim.x);
-    const float opening = std::min(elapsed_, openingDuration);
+    const float opening = std::min(elapsed(), openingDuration);
     const float pressure = flightPressure(elapsed_);
     const float speed = 130.f + 0.95f * opening + 104.f * pressure;
     const int stage = barrageStage(elapsed_);
@@ -1032,7 +1070,7 @@ void Combat::updatePickup(float dt, sf::Vector2f playerPosition)
 float Combat::effectiveFireRate() const
 {
     // Long flights reach the laser even if the pilot misses every pickup.
-    const float flightBonus = std::clamp((elapsed_ - 45.f) * 0.6f, 0.f, 34.f);
+    const float flightBonus = std::clamp((elapsed() - 45.f) * 0.6f, 0.f, 34.f);
     return cannonPattern(power()).roundsPerSecond() * fireRateMultiplier_ + flightBonus;
 }
 
@@ -1107,16 +1145,36 @@ void Combat::updateWeapon(float dt, sf::Vector2f muzzle)
     }
 }
 
+float Combat::projectileDensity() const
+{
+    const float inFlight = static_cast<float>(shots_.size() + laserPulses_.size());
+    return inFlight / (inFlight + 60.f);
+}
+
+float Combat::weaponScatter(float base) const
+{
+    return base + (1.f - base) * 0.18f * projectileDensity();
+}
+
+float Combat::weaponNoise()
+{
+    return std::uniform_real_distribution<float>(-1.f, 1.f)(weaponRandom_);
+}
+
 void Combat::fireMissileRack(sf::Vector2f muzzle)
 {
     const unsigned count = 1 + (weaponRank_ + 1) / 2;
     const float alternatingSide = volleysFired_ % 2 ? 1.f : -1.f;
-    const float opening = 0.030f + 0.027f * weaponRank_;
+    const float scatter = weaponScatter(spreadStrength(weaponRank_));
+    const float opening = 0.030f + 0.75f * scatter;
     for (unsigned i = 0; i < count; ++i)
     {
         const float lane = count == 1 ? alternatingSide : 2.f * i / (count - 1) - 1.f;
-        Shot missile{ShotKind::Missile, muzzle + sf::Vector2f{0.f, lane * (4.f + weaponRank_)},
-                     velocityAt(lane * opening, 310.f), 5.f, 0.f, 0.f};
+        const float angle = lane * opening + 0.46f * scatter * weaponNoise();
+        const float speed = 310.f + 80.f * scatter * weaponNoise();
+        Shot missile{ShotKind::Missile, muzzle + sf::Vector2f{0.f, lane * (4.f + 14.f * scatter)},
+                     velocityAt(angle, speed), 5.f, 0.f, 0.f};
+        missile.verticalAcceleration = 235.f * scatter * weaponNoise();
         missile.weaponRank = weaponRank_;
         shots_.push_back(missile);
     }
@@ -1126,7 +1184,8 @@ void Combat::fireLaser(sf::Vector2f muzzle)
 {
     const unsigned rank = weaponRank_;
     sf::Vector2f aim{1.f, 0.f};
-    float opening = 0.045f + 0.025f * rank;
+    const float scatter = weaponScatter(spreadStrength(rank));
+    float opening = 0.045f + 0.70f * scatter;
     if (const auto* target = guidanceTarget())
     {
         const auto offset = target->position - muzzle;
@@ -1186,9 +1245,14 @@ void Combat::fireLaser(sf::Vector2f muzzle)
     const float heading = std::atan2(aim.y, aim.x);
     for (unsigned lane = 1; lane <= pairs; ++lane)
     {
-        const float angle = opening * lane / pairs;
-        emitRay(velocityAt(heading - angle, 1.f));
-        emitRay(velocityAt(heading + angle, 1.f));
+        // Scatter the side rays independently inside the cone allowed by the guidance sight.
+        for (float side : {-1.f, 1.f})
+        {
+            const float nominal = static_cast<float>(lane) / pairs;
+            const float randomLane = 0.5f + 0.5f * weaponNoise();
+            const float angle = opening * (nominal + scatter * (randomLane - nominal));
+            emitRay(velocityAt(heading + side * angle, 1.f));
+        }
     }
 
     // Trace the whole fan first: a ship destroyed by the central ray still blocks the side rays of that burst.
@@ -1235,19 +1299,21 @@ void Combat::fireVolley(sf::Vector2f muzzle)
     // Relative to the starting cannon, count every round in a full burst and reload.
     const float relativeRate = fireRateMultiplier_ * pattern.roundsPerSecond() * singleReload;
     const float extraRate = relativeRate - 1.f + 0.35f * weaponRank_;
-    const float intensity = extraRate / (extraRate + 5.f);
+    const float intensity = weaponScatter(extraRate / (extraRate + 5.f));
     const float deviation = maxDeviation * intensity;
+    const float scatter = weaponScatter(spreadStrength(weaponRank_));
     const float curveChance = 0.16f + 0.42f * intensity;
     const float curveAcceleration = 60.f + 430.f * intensity;
     std::uniform_real_distribution<float> jitter(-deviation, deviation);
     std::uniform_real_distribution<float> curveRoll(-1.f, 1.f);
     const int lanes = pattern.spread + static_cast<int>((weaponRank_ + 1) / 2);
-    const float opening = pattern.spread * (level >= 5 ? 0.18f : 0.12f) + 0.04f * weaponRank_;
+    const float baseOpening = pattern.spread * (level >= 5 ? 0.18f : 0.12f);
+    const float opening = baseOpening + (1.45f - deviation - baseOpening) * scatter;
     const float stepAngle = lanes > 0 ? opening / lanes : 0.f;
     for (int i = -lanes; i <= lanes; ++i)
     {
         const float angle = i * stepAngle + jitter(weaponRandom_);
-        Shot shot{ShotKind::Player, muzzle, velocityAt(angle, 630.f), 3.f, 0.f, 0.f};
+        Shot shot{ShotKind::Player, muzzle, velocityAt(angle, 630.f + 110.f * scatter * weaponNoise()), 3.f, 0.f, 0.f};
         shot.weaponRank = weaponRank_;
         shot.trailPower = intensity;
         shot.sparkSeed = static_cast<unsigned>(std::abs(shot.velocity.x) * 1024.f);
@@ -1264,10 +1330,12 @@ void Combat::fireVolley(sf::Vector2f muzzle)
         {
             for (float sign : {-1.f, 1.f})
             {
-                const auto velocity = velocityAt(sign * 0.12f * lane + jitter(weaponRandom_), 545.f);
+                const float sideAngle = 0.68f * scatter * lane / pairs;
+                const auto velocity = velocityAt(sign * sideAngle + jitter(weaponRandom_), 545.f);
                 const float phase = std::uniform_real_distribution<float>{0.f, 2.f * pi}(weaponRandom_);
                 Shot shot{ShotKind::PlayerWave, muzzle, velocity, 3.5f, 0.f, sign, phase, velocity.y};
                 shot.weaponRank = weaponRank_;
+                shot.waveTempo = 1.f + 0.50f * scatter * weaponNoise();
                 shots_.push_back(shot);
             }
         }
@@ -1279,7 +1347,7 @@ void Combat::fireVolley(sf::Vector2f muzzle)
 
 float Combat::arsenalPhase() const
 {
-    return std::fmod(0.5f * pi + 5.4f * (elapsed_ - weaponSince_), 2.f * pi);
+    return static_cast<float>(std::fmod(0.5 * pi + 5.4 * (elapsed_ - weaponSince_), 2.0 * pi));
 }
 
 sf::Vector2f Combat::arsenalEmitterOffset(unsigned index) const
@@ -1292,12 +1360,13 @@ sf::Vector2f Combat::arsenalEmitterOffset(unsigned index) const
 void Combat::fireSalvoBolt(sf::Vector2f muzzle)
 {
     const auto origin = muzzle + arsenalEmitterOffset(nextEmitter_) + sf::Vector2f{4.f, 0.f};
-    std::uniform_real_distribution<float> jitter(-1.f, 1.f);
-    const float speed = 690.f + (5.f + 1.6f * weaponRank_) * jitter(weaponRandom_);
+    const float scatter = weaponScatter(spreadStrength(weaponRank_));
+    const float speed = 690.f + (5.f + 108.f * scatter) * weaponNoise();
     Shot shot{ShotKind::Salvo, origin, {speed, 0.f}, 2.8f, 0.f, nextEmitter_ == 0 ? 1.f : -1.f};
     shot.wavePhase = arsenalPhase();
     shot.weaponRank = weaponRank_;
-    shot.waveDriftY = (4.f + 1.8f * weaponRank_) * jitter(weaponRandom_);
+    shot.waveTempo = 1.f + 0.38f * scatter * weaponNoise();
+    shot.waveDriftY = (4.f + 90.f * scatter) * weaponNoise();
     shots_.push_back(shot);
 }
 
@@ -1331,7 +1400,7 @@ const Enemy* Combat::droneTarget(sf::Vector2f position, const Enemy* claimed) co
 
 void Combat::updateDrones(float dt, sf::Vector2f playerPosition)
 {
-    const float angle = 2.7f * (elapsed_ - weaponSince_);
+    const float angle = static_cast<float>(std::fmod(2.7 * (elapsed_ - weaponSince_), 2.0 * pi));
     // Compress the orbit near a screen edge so the drones stay opposite each other.
     constexpr float margin = 12.f;
     const sf::Vector2f center{std::clamp(playerPosition.x, margin, width - margin),
@@ -1359,14 +1428,16 @@ void Combat::updateDrones(float dt, sf::Vector2f playerPosition)
         const auto side = drone.direction.perpendicular();
         const auto muzzle = drone.muzzle();
         // Each bolt sights a different point inside the claimed target's silhouette.
-        const float aperture = target->radius * (0.45f + 0.04f * weaponRank_);
+        const float scatter = weaponScatter(spreadStrength(weaponRank_));
+        const float aperture = target->radius * (0.45f + 0.52f * scatter);
         for (unsigned bolt = 0; bolt < count; ++bolt)
         {
             const float lane = count == 1 ? 0.f : 2.f * bolt / (count - 1) - 1.f;
-            const auto start = muzzle + side * (lane * (2.f + 0.35f * weaponRank_));
-            const auto offsetToAim = target->position + side * (lane * aperture) - start;
+            const auto start = muzzle + side * (lane * (2.f + 8.f * scatter));
+            const float aimLane = lane + scatter * (weaponNoise() - lane);
+            const auto offsetToAim = target->position + side * (aimLane * aperture) - start;
             const auto direction = offsetToAim.lengthSquared() > 0.f ? offsetToAim.normalized() : drone.direction;
-            Shot shot{ShotKind::Drone, start, direction * 570.f, 2.4f, 0.f, 0.f};
+            Shot shot{ShotKind::Drone, start, direction * (570.f + 105.f * scatter * weaponNoise()), 2.4f, 0.f, 0.f};
             shot.droneIndex = i;
             shot.weaponRank = weaponRank_;
             shots_.push_back(shot);
@@ -1401,14 +1472,14 @@ void Combat::updateShots(float dt)
         if (shot.kind == ShotKind::Salvo && shot.lastGuidedAge < 0.f)
         {
             // After guidance ends a dart keeps its last heading, without snapping back into the wave.
-            const float before = salvoOffset(shot.age - dt, shot.wavePhase, shot.weaponRank);
-            const float after = salvoOffset(shot.age, shot.wavePhase, shot.weaponRank);
+            const float before = salvoOffset(shot.age - dt, shot);
+            const float after = salvoOffset(shot.age, shot);
             shot.velocity.y = shot.waveDriftY + shot.waveSign * (after - before) / dt;
         }
         else if (!steering && shot.kind == ShotKind::PlayerWave)
         {
-            const float before = waveOffset(shot.age - dt, shot.wavePhase);
-            const float after = waveOffset(shot.age, shot.wavePhase);
+            const float before = waveOffset((shot.age - dt) * shot.waveTempo, shot.wavePhase);
+            const float after = waveOffset(shot.age * shot.waveTempo, shot.wavePhase);
             const float swing = shot.waveSign * (after - before) / dt;
             if (shot.lastGuidedAge < 0.f)
                 shot.velocity.y = shot.waveDriftY + swing;
@@ -1421,6 +1492,12 @@ void Combat::updateShots(float dt)
             }
         }
         shot.position += shot.velocity * dt;
+        if (shot.enemyBend != sf::Vector2f{} && shot.age - dt < Shot::enemyBendDuration)
+        {
+            const float bendTime = std::clamp(Shot::enemyBendDuration - (shot.age - dt), 0.f, dt);
+            shot.position += shot.enemyBend * (bendTime * (dt - 0.5f * bendTime));
+            shot.velocity += shot.enemyBend * bendTime;
+        }
         if (!steering && shot.verticalAcceleration != 0.f)
         {
             const float changeInSpeedY = shot.verticalAcceleration * dt;
@@ -1473,12 +1550,12 @@ void Combat::hitPlayer(sf::Vector2f position)
 
 float Combat::lifeRecoveryFlash() const
 {
-    return std::max(0.f, 1.f - (elapsed_ - lastLifeRecoveryTime_) / lifeNoticeDuration);
+    return std::max(0.f, 1.f - (elapsed() - lastLifeRecoveryTime_) / lifeNoticeDuration);
 }
 
 float Combat::lifeRecoveryGlow() const
 {
-    return std::max(0.f, 1.f - (elapsed_ - lastLifeRecoveryTime_) / lifeGlowDuration);
+    return std::max(0.f, 1.f - (elapsed() - lastLifeRecoveryTime_) / lifeGlowDuration);
 }
 
 void Combat::creditRecoveryKill()
@@ -1503,9 +1580,12 @@ void Combat::creditRecoveryKill()
 
 void Combat::creditEnemyKill(int points, unsigned chainId)
 {
-    ++enemiesDestroyed_;
-    if (weaponRank_ < maxWeaponRank && enemiesDestroyed_ == weaponRankKills[weaponRank_])
-        ++weaponRank_;
+    if (enemiesDestroyed_ < std::numeric_limits<std::uint64_t>::max())
+    {
+        ++enemiesDestroyed_;
+        if (enemiesDestroyed_ == nextWeaponRankKills())
+            ++weaponRank_;
+    }
     score_ += points;
     creditRecoveryKill();
     if (chainId == 0)
@@ -1652,7 +1732,7 @@ void Combat::collide(sf::Vector2f playerPosition, sf::Vector2f previousMuzzle, f
             continue;
         if (weaponMode_ == WeaponMode::Arsenal)
         {
-            const auto from = shot.position - shot.velocity * dt - previousMuzzle;
+            const auto from = shot.enemyPastPosition(dt) - previousMuzzle;
             if (const auto hit = shieldImpactY(from, shot.position - arsenalMuzzle_, shot.radius))
             {
                 shot.spent = true;

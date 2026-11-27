@@ -15,6 +15,8 @@ using Color = sf::Color;
 using Batch = std::vector<sf::Vertex>;
 constexpr Color shadow{24, 34, 48}, steel{81, 111, 123}, metal{154, 173, 167};
 constexpr Color brass{219, 153, 76}, amber{252, 213, 122}, cyan{111, 220, 220};
+struct DeckFire { float x, size; };
+constexpr std::array<DeckFire, 4> deckFires{{{69.f, 1.12f}, {158.f, 1.52f}, {202.f, 0.86f}, {291.f, 1.28f}}};
 
 Color light(Color c, float amount)
 {
@@ -93,6 +95,41 @@ void reflection(Batch& batch, Vec position, float length, float width, Color tin
     }
 }
 
+void deckFire(Batch& batch, Vec base, float time, float strength)
+{
+    // Stagger rising ash and smoke so each breach has its own silhouette.
+    for (int i = 0; i < 5; ++i)
+    {
+        const float rise = std::fmod(time * 0.54f + i * 0.2f, 1.f);
+        const float radius = (5.f + 11.f * rise) * strength;
+        const Vec center = base + Vec{rise * (31.f + 4.f * std::sin(time + i)), -(11.f + 64.f * rise) * strength};
+        const Color smoke = light({89, 73, 85}, (1.f - rise) * 0.76f * strength);
+        box(batch, center - Vec{radius, radius * 0.45f}, radius * 2.f, radius * 0.9f, smoke);
+        box(batch, center - Vec{radius * 0.63f, radius * 0.8f}, radius * 1.26f, radius * 1.6f, smoke);
+        const float spark = std::fmod(time * 0.83f + i * 0.22f, 1.f);
+        box(batch, base + Vec{(i - 2) * 3.7f + spark * 18.f, -(8.f + 39.f * spark) * strength},
+            2.f, 3.f, light(amber, (1.f - spark) * strength));
+    }
+    // Pixel terraces taper to a windblown tip. Each tongue varies in height and phase.
+    for (int i = -2; i <= 2; ++i)
+    {
+        const float flicker = std::sin(time * 9.f + i * 2.4f);
+        const float height = (33.f - 7.f * std::abs(i) + 5.f * flicker) * strength;
+        const float step = height / 6.f;
+        for (int j = 0; j < 6; ++j)
+        {
+            const float up = j / 6.f;
+            const float x = base.x + i * 4.f + up * (5.f + 3.f * flicker);
+            const float half = (5.f - 4.f * up) * strength;
+            const float y = base.y - (j + 1) * step;
+            box(batch, {x - half, y}, 2.f * half + 1.f, std::ceil(step) + 1.f, {226, 75, 44});
+            if (j < 5)
+                box(batch, {x - half * 0.64f, y + 1.f}, half + 1.f, std::ceil(step),
+                    j < 2 ? Color{255, 235, 149} : Color{255, 162, 56});
+        }
+    }
+}
+
 void deckFighter(Batch& batch, Vec position, float heat)
 {
     // Nose points down the launch rail, with folding wings and a copper canopy.
@@ -142,9 +179,9 @@ void drawCarrierSky(sf::RenderTarget& target, const Combat& combat)
         const Vec position = raid.mount(i ? CarrierPart::AftLight : CarrierPart::ForwardLight);
         lampBeam(batch, position, lightDirection(raid, i), power);
     }
-    if (!intro && raid.salvoCharge >= CarrierRaid::lockAt(raid.lights()))
+    if (!intro && raid.salvoCharge >= raid.lockAt())
     {
-        const float fade = std::clamp((raid.salvoCharge - CarrierRaid::lockAt(raid.lights())) * 6.f, 0.f, 1.f);
+        const float fade = std::clamp(0.35f + (raid.salvoCharge - raid.lockAt()) * 6.f, 0.f, 1.f);
         const Color sight = light({255, 148, 111}, fade * 0.85f);
         const Vec aim = raid.salvoTarget;
         for (int i = 0; i < 2; ++i)
@@ -175,9 +212,14 @@ void drawCarrier(sf::RenderTarget& target, const Combat& combat, const sf::Textu
     const Vec origin = raid.position - CarrierRaid::spriteOrigin;
     const float water = raid.position.y + 17.f;
     const auto drop = [&](float x) { return 124.f * sink * sink + (raid.position.x - x) * 0.094f * sink; };
+    const float burn = raid.deckBurning()
+        ? (1.f - sink) * (1.f - 0.65f * raid.health / raid.maxHealth) : 0.f;
     Batch batch;
     for (const auto x : {26.f, 176.f, 319.f})
         reflection(batch, {origin.x + x, water}, 23, 7, amber, combat.elapsed(), reveal * (1.f - sink) * 0.72f);
+    if (burn > 0.f)
+        for (const auto fire : deckFires)
+            reflection(batch, {origin.x + fire.x, water}, 26, 18 * fire.size, {255, 117, 55}, combat.elapsed(), burn);
     for (int i = 0; i < 12; ++i)
     {
         const float drift = std::fmod(i * 10.f + combat.elapsed() * 28.f, 121.f);
@@ -211,6 +253,9 @@ void drawCarrier(sf::RenderTarget& target, const Combat& combat, const sf::Textu
         draw(target, batch, flash);
     }
     batch.clear();
+    if (burn > 0.f)
+        for (const auto fire : deckFires)
+            deckFire(batch, origin + Vec{fire.x, 48.f}, combat.elapsed() + fire.x * 0.13f, burn * fire.size);
     const Vec cat = raid.mount(CarrierPart::Catapult);
     const auto* catTarget = combat.carrierPart(CarrierPart::Catapult);
     const bool catHit = catTarget && catTarget->hitFlash > 0.045f;
