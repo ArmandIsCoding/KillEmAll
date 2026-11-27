@@ -203,7 +203,7 @@ void GameAudio::updateMusic(const Combat& combat, float worldDt)
     const int kills = combat.combo().kills;
     const float target = kills >= 2 ? std::min(45.f, 25.f + 2.f * kills) : 0.f;
     drumVolume_ += std::clamp(target - drumVolume_, -45.f * worldDt, 180.f * worldDt);
-    // Enter on the current sixteenth of coast-patrol's 138 BPM groove.
+    // Start the four-bar percussion layer on the same beat as the rhythm guitars.
     mixLoop(drums, drumVolume_ * patrol, music.getPlayingOffset().asSeconds());
 
     // The stereo victory cue begins with exactly one second of surf before the brass enters.

@@ -4,6 +4,8 @@ Un *bullet hell* de desplazamiento horizontal hecho en **C++17 y SFML 3.1**. Ten
 
 [Compilar y jugar en Windows](#compilar-en-visual-studio) · [Controles](#controles)
 
+El puerto tiene un tema original de **heavy metal arcade a 150 BPM**. Dos guitarras distorsionadas se reparten el riff en estéreo sobre un bajo con púa y una batería con doble bombo. A mitad de la vuelta, la batería pasa a medio tiempo y entra la melodía de guitarra. [Escuchá el tema del puerto](assets/arcade/audio/coast-patrol.wav).
+
 Cuando perdés una vida, aparece **BAJAS 0/50** debajo de los aviones en **VIDAS**. Al llegar a **45/50**, el contador empieza a parpadear en dorado y se acelera con cada baja. En **49/50** suena una vez un pitido descendente. [Escuchá el aviso de última baja](assets/arcade/audio/life-warning.wav).
 
 Cada 50 enemigos que derribás recuperás una vida, hasta volver a tres. También cuentan las bajas por explosiones en cadena y cada torreta del acorazado que destruís. Si recibís otro impacto mientras seguís en juego, conservás el progreso.
@@ -133,7 +135,7 @@ Al **35 % de casco** se incendia la cubierta y aparece **FASE II** sobre la barr
 
 ![La cubierta se prende fuego al 35 %, el portaaviones abre su andanada y los proyectiles se multiplican más adelante en la partida.](docs/media/cubierta-en-llamas.gif)
 
-Los osciladores del Arsenal se contestan en estéreo y las bajas en cadena suman percusión a la música del puerto. Cuando el portaaviones se hunde, se escucha un segundo de oleaje antes de que entre la fanfarria y vuelvan las luces del muelle. [Escuchá el oleaje y la fanfarria](assets/arcade/audio/carrier-victory.wav).
+Los osciladores del Arsenal se contestan en estéreo. Desde **COMBO x2**, los toms y los golpes de plato se suman al compás del riff. Durante el apagón queda un pulso de bajo en mi. Al hundirse el portaaviones, se escucha un segundo de oleaje antes de la fanfarria. [Escuchá el oleaje y la fanfarria](assets/arcade/audio/carrier-victory.wav).
 
 ### Explosiones en cadena
 
