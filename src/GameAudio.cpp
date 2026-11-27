@@ -232,6 +232,20 @@ void GameAudio::playGunshipBlast()
 
 void GameAudio::update(const Combat& combat, bool weaponUpgraded)
 {
+    if (combat.campaignWon())
+    {
+        if (running)
+        {
+            setPlaying(false);
+            if (!silent)
+            {
+                fanfare.setBuffer(fanfareTenData);
+                fanfare.setPitch(1.f);
+                fanfare.play();
+            }
+        }
+        return;
+    }
     setTimeScale(combat.timeScale());
     const bool audibleFrame = running && !silent;
     const float worldDt = std::max(0.f, combat.elapsed() - lastWorldTime_);

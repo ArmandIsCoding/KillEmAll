@@ -1,8 +1,8 @@
 # ![Kill ’Em All — Costa industrial](docs/media/portada.png)
 
-Un *bullet hell* de desplazamiento horizontal hecho en **C++17 y SFML 3.1**. Tenés tres vidas y un avión que dispara solo sobre una costa industrial. Podés alinearte con un convoy para encadenar explosiones, bajar a atacar una lancha o reservar el guiado para el interceptor que te viene siguiendo desde atrás.
+Un *bullet hell* de desplazamiento horizontal hecho en **C++17 y SFML 3.1**. Despegás con tres vidas y un avión que dispara solo. Desde el puerto industrial hasta la Fortaleza del Eclipse te esperan diez escenarios, cada uno con su propio jefe final.
 
-[Compilar y jugar en Windows](#compilar-en-visual-studio) · [Controles](#controles)
+[Compilar y jugar en Windows](#compilar-en-visual-studio) · [Controles](#controles) · [Los diez niveles](#los-diez-niveles)
 
 El puerto tiene un tema original de **heavy metal arcade a 150 BPM**. Dos guitarras distorsionadas se reparten el riff en estéreo sobre un bajo con púa y una batería con doble bombo. A mitad de la vuelta, la batería pasa a medio tiempo y entra la melodía de guitarra. [Escuchá el tema del puerto](assets/arcade/audio/coast-patrol.wav).
 
@@ -13,6 +13,27 @@ Cada 50 enemigos que derribás recuperás una vida, hasta volver a tres. Tambié
 Al recuperar la vida, el avión da un destello dorado al mismo tiempo que aparece **+1 VIDA** debajo del puntaje y suenan tres notas cortas seguidas de un acorde. El brillo se desvanece en menos de medio segundo de vuelo y el cartel sigue visible un poco más. [Escuchá el aviso de vida recuperada](assets/arcade/audio/life-recovered.wav).
 
 ![Cuatro pasadas sobre el puerto muestran el cañón dorado, las salvas de misiles, el abanico de haces láser y el Arsenal con escolta orbital.](docs/media/combate.gif)
+
+## Los diez niveles
+
+El puerto conserva su dificultad original. El acorazado de los **42 segundos** es un encuentro intermedio. El portaaviones entra a los **2:20 de vuelo** y abre fuego ocho segundos después. Hundilo para pasar al desguace. Desde el nivel 2 tenés **54 segundos de vuelo** antes del jefe, y cada escenario agrega tres segundos más, hasta los **78 segundos** del nivel 10.
+
+![Los diez jefes de la campaña en combate, desde el portaaviones del puerto hasta Corona Negra en la Fortaleza del Eclipse.](docs/media/campana.gif)
+
+| Nivel | Escenario | Jefe final | Qué mirar durante el combate |
+| --- | --- | --- | --- |
+| 1 | Costa Industrial | Portaaviones | Los reflectores te siguen y la catapulta larga cazas. Al 35 % de casco se incendia la cubierta. |
+| 2 | El Desguace | Cizalla | Las pinzas de una grúa flotante disparan por encima y por debajo de tu posición. Destruí una para abrir espacio. |
+| 3 | Archipiélago de Tormentas | Albatros | Entra en picada y alterna sus dos baterías. Cuando queda herido dispara con las dos. |
+| 4 | Fiordo Polar | Narval | Los tubos del submarino disparan hacia arriba y los proyectiles se curvan hacia tu lado de la pantalla. |
+| 5 | Refinería del Desierto | Taladro | Los morteros de un tren blindado elevan las bombas y las dejan caer sobre la posición que fijaron. |
+| 6 | Selva Inundada | Anaconda | La cabeza larga espirales. Los dos segmentos que la siguen apuntan desde distintas alturas. |
+| 7 | Caldera Volcánica | Basilisco | La máquina camina sobre la caldera y levanta columnas de brasas desde el lomo. |
+| 8 | Ciudad Neón | Prisma | Alterna una espiral con un muro de proyectiles. Buscá el hueco señalado antes de que llegue el muro. |
+| 9 | Mar de Nubes | Arcángel | Entre las nubes suben patrullas de exploradores. Los hangares de la nave nodriza largan interceptores que te persiguen. Destruí un hangar para cortar sus despegues. |
+| 10 | Fortaleza del Eclipse | Corona Negra | Tres baterías orbitan el núcleo entre paredes y espirales. Cuando se enciende el portal magenta de la izquierda, cambiá de altura antes de que los pulsos te alcancen por la cola. |
+
+Al derribar al jefe se despeja la pantalla y el siguiente nivel empieza automáticamente. Conservás tus vidas, las bajas acumuladas hacia la próxima vida, el rango del arma, los robots, la carga de los poderes y el puntaje. Las oleadas suman escoltas, entran por más ángulos y disparan cada vez más rápido. La campaña termina al destruir a Corona Negra. En la pantalla de cierre ves tu puntaje y tu mejor combo.
 
 ## Del cañón al arsenal
 
@@ -68,12 +89,12 @@ En R10 el tiempo entre descargas es un **15 % menor** que en R0 con los mismos p
 | **Barra espaciadora** (mantener) | Guiar los disparos del cañón, los misiles y las salvas del arsenal, o apuntar el láser al enemigo más fuerte en pantalla. El robot celeste prioriza ese blanco y el verde apunta al siguiente en prioridad. |
 | **P** | Pausar o reanudar. |
 | **M** | Silenciar o activar la música y los efectos. |
-| **Enter** o **R** | Volver a despegar después de perder las tres vidas. |
+| **Enter** o **R** | Empezar de nuevo en el puerto después de perder las tres vidas o completar la campaña. |
 | **Esc** | Salir del juego. |
 
 Podés usar **precisión y guiado juntos**. La cámara lenta alcanza el vuelo, el desplazamiento de la costa, los enemigos, las balas de ambos bandos, la cadencia del cañón y las explosiones. También baja el ritmo de la música, los sonidos de combate y las fanfarrias.
 
-Con el **guiado**, los tiros del cañón, los misiles y la salva del arsenal salen con su trayectoria habitual y enseguida doblan. Los que ya están en vuelo también buscan el blanco. El láser apunta directamente a la mira en el instante de cada pulso. Durante el asalto nocturno el guiado prioriza la catapulta y los reflectores, y después el casco del portaaviones. En el resto de la partida sigue el orden **torreta del acorazado, blindado, lancha, interceptor y explorador**. Si derribás al blanco, la mira salta al siguiente. Al soltar la barra, los proyectiles siguen desde el rumbo que llevaban y el próximo pulso vuelve a salir hacia adelante.
+Con el **guiado**, los tiros del cañón, los misiles y la salva del arsenal salen con su trayectoria habitual y enseguida doblan. Los que ya están en vuelo también buscan el blanco. El láser apunta directamente a la mira en el instante de cada pulso. Durante el asalto nocturno el guiado prioriza la catapulta y los reflectores, y después el casco del portaaviones. También podés usarlo contra las baterías y los núcleos de los jefes siguientes. Fuera de esos duelos sigue el orden **torreta del acorazado, blindado, lancha, interceptor y explorador**. Si derribás al blanco, la mira salta al siguiente. Al soltar la barra, los proyectiles siguen desde el rumbo que llevaban y el próximo pulso vuelve a salir hacia adelante.
 
 La mira es **verde** si al blanco le queda más del 60 % de vida. Pasa a **ámbar** al llegar al 60 % o menos. Cuando le queda un cuarto de vida o menos, o está a un solo punto de caer, la mira **parpadea en rojo**. Al cambiar de blanco, toma de inmediato el color que corresponde a la vida del nuevo enemigo.
 
@@ -95,7 +116,7 @@ Al comienzo, el **explorador** apunta a tu posición, el **interceptor** abre un
 
 En cada abanico, el tiro central sigue el rumbo apuntado. Los laterales varían de ángulo y velocidad y pueden curvarse hacia cualquiera de los lados durante los primeros **1,1 segundos**. La estela rosa muestra de dónde vienen. Con **Shift** también se ralentizan estas curvas.
 
-Al despegar recorrés **105 m/s** y llega una formación aérea aproximadamente cada tres segundos. A los cinco minutos recorrés unos **260 m/s**, con una formación por segundo fuera de los encuentros con el jefe. Las escuadras tardías traen refuerzos a otra altura y las lanchas cruzan más seguido. Durante el duelo con el acorazado hay más espacio entre formaciones.
+Al despegar recorrés **105 m/s** y llega una formación aérea aproximadamente cada tres segundos. Durante el duelo con el acorazado hay más espacio entre formaciones. En los niveles siguientes el paisaje pasa cada vez más rápido, las escuadras traen refuerzos a otra altura y las lanchas cruzan más seguido.
 
 Los aviones entran a distintas velocidades. Algunos exploradores cambian de altura con una curva en S. En las formaciones de pinza, un interceptor con escape fucsia corrige su rumbo hacia vos y lo mantiene durante la pasada final. Una señal en el borde anuncia por dónde entra. En pinzas alternas aparece desde la izquierda.
 
@@ -113,7 +134,7 @@ A los **42 segundos de vuelo**, una bocina anuncia al primer jefe. Entra por el 
 | Centro, sobre el puente | El antiaéreo arranca con cinco disparos y ensancha su abanico con el tiempo. Podés pasar por los huecos o desactivarlo primero apuntando a la torreta más alta. |
 | Popa, a la derecha | La batería rápida hace tres descargas seguidas hacia el punto que fijó antes de la ráfaga. En encuentros avanzados abre tres tiros por descarga. |
 
-Podés apuntar al casco para hundir el barco o a una torreta para desactivar ese ataque. Cada torreta tiene **40 puntos de vida**, vale **250 puntos** y al recibir daño también baja la integridad del barco. Al llegar a cero, el acorazado se hunde, libera una onda expansiva y suma **1500 puntos**. Si sobrevive, a los 34 segundos de encuentro empieza a retirarse hacia la izquierda. Entre acorazados pasan **55 segundos**. El asalto del portaaviones tiene prioridad durante la primera noche.
+Podés apuntar al casco para hundir el barco o a una torreta para desactivar ese ataque. Cada torreta tiene **40 puntos de vida**, vale **250 puntos** y al recibir daño también baja la integridad del barco. Al llegar a cero, el acorazado se hunde, libera una onda expansiva y suma **1500 puntos**. Si sobrevive, a los 34 segundos de encuentro empieza a retirarse hacia la izquierda.
 
 ### El asalto de la primera noche
 

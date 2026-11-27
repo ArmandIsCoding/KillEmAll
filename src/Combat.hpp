@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CarrierRaid.hpp"
+#include "StageBoss.hpp"
 
 #include <SFML/System/Vector2.hpp>
 
@@ -12,7 +13,8 @@
 #include <unordered_map>
 #include <vector>
 
-enum class EnemyKind { Scout, Striker, Gunship, PatrolBoat, BattleshipTurret, CarrierPart, CarrierHull };
+enum class EnemyKind { Scout, Striker, Gunship, PatrolBoat, BattleshipTurret, CarrierPart, CarrierHull,
+                       StageBossCore, StageBossMount };
 enum class TurretKind { Cannon, Flak, Burst };
 
 struct Battleship
@@ -57,6 +59,15 @@ struct Enemy
     TurretKind turretKind = TurretKind::Cannon;
     CarrierPart carrierPart = CarrierPart::Hull;
     int spawnHealth = health;
+    unsigned bossMount = 0;
+
+    bool stageBossPart() const { return kind == EnemyKind::StageBossCore || kind == EnemyKind::StageBossMount; }
+    bool solidHull() const { return kind == EnemyKind::StageBossCore || kind == EnemyKind::CarrierHull; }
+    bool bossPart() const
+    {
+        return kind == EnemyKind::BattleshipTurret || kind == EnemyKind::CarrierPart ||
+               kind == EnemyKind::CarrierHull || stageBossPart();
+    }
 
     static constexpr float boatAimWarning = 0.48f;
     sf::Vector2f turretPivot() const;
@@ -162,6 +173,14 @@ struct Combo
 class Combat
 {
 public:
+    static constexpr unsigned levelCount = 10;
+    unsigned level() const { return level_; }
+    float levelTime() const { return static_cast<float>(elapsed_ - levelStartTime_); }
+    double levelDistance() const { return distance_ - levelStartDistance_; }
+    float bossArrival() const { return level_ == 1 ? CarrierRaid::arrival : 54.f + 3.f * (level_ - 2); }
+    bool levelCleared() const;
+    bool campaignWon() const { return campaignWon_; }
+    bool finished() const { return gameOver() || campaignWon_; }
     static constexpr int maxLives = 3;
     static constexpr int killsPerLife = 50;
     static constexpr unsigned secondDroneUpgrade = 3;
@@ -194,6 +213,7 @@ public:
     const std::vector<Enemy>& enemies() const { return enemies_; }
     const std::optional<Battleship>& battleship() const { return battleship_; }
     const CarrierRaid& carrierRaid() const { return carrierRaid_; }
+    const std::optional<StageBoss>& stageBoss() const { return stageBoss_; }
     const Enemy* carrierPart(CarrierPart part) const;
     const Enemy* bossTurret(TurretKind kind) const;
     int bossHealth() const;
@@ -263,11 +283,18 @@ private:
     };
 
     void step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffset);
+    void clearEncounters();
+    void finishLevel();
     void spawnFormation();
-    void spawnBoat();
+    void spawnPatrol();
     void updateBoat(Enemy& boat, float dt, sf::Vector2f playerPosition);
     void updateBattleship(float dt);
     void updateCarrier(float dt, sf::Vector2f player);
+    void startStageBoss(unsigned level);
+    void updateStageBoss(float dt, sf::Vector2f player);
+    void fireStageBoss();
+    void damageStageBoss(Enemy& enemy, int amount, sf::Vector2f hit, unsigned chainId);
+    sf::Vector2f hullContact(const Enemy& enemy, sf::Vector2f point) const;
     void damageCarrier(Enemy& enemy, int amount, sf::Vector2f hit, unsigned chainId);
     void updateBossTurret(Enemy& turret, float dt, sf::Vector2f playerPosition);
     void damageHull(int amount, sf::Vector2f impact, unsigned chainId = 0, bool countedKill = false);
@@ -306,6 +333,7 @@ private:
     std::vector<Enemy> enemies_;
     std::optional<Battleship> battleship_;
     CarrierRaid carrierRaid_;
+    std::optional<StageBoss> stageBoss_;
     float nextBoss_ = 42.f;
     std::vector<Shot> shots_;
     std::vector<FadingTrail> fadingTrails_;
@@ -337,6 +365,11 @@ private:
     float lastLifeRecoveryTime_ = -std::numeric_limits<float>::infinity();
     double elapsed_ = 0.0;
     double distance_ = 0.0;
+    unsigned level_ = 1;
+    double levelStartTime_ = 0.0;
+    double levelStartDistance_ = 0.0;
+    float clearAge_ = 0.f;
+    bool campaignWon_ = false;
     float grace_ = 0.f;
     sf::Vector2f arsenalMuzzle_{};
     float arsenalShieldFlash_ = 0.f;
@@ -346,7 +379,7 @@ private:
     float braidTimeLeft_ = 0.f;
     unsigned braidsFired_ = 0;
     float nextFormation_ = 0.f;
-    float nextBoat_ = 9.f;
+    float nextPatrol_ = 9.f;
     float nextPulse_ = 0.f;
     double weaponSince_ = 0.0;
     std::vector<OrbitalDrone> drones_;

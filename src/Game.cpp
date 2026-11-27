@@ -49,7 +49,7 @@ void Game::enableAudio()
         audio.emplace(audioDirectory);
         // Enabling audio mid-flight starts with the next combat event.
         audio->update(combat, false);
-        audio->setPlaying(!paused && !combat.gameOver());
+        audio->setPlaying(!paused && !combat.finished());
     }
     catch (const std::exception& error)
     {
@@ -79,16 +79,16 @@ void Game::keyPressed(Key key)
         else
             enableAudio();
     }
-    else if ((key == Key::Enter || key == Key::R) && combat.gameOver())
+    else if ((key == Key::Enter || key == Key::R) && combat.finished())
         restart();
-    else if (key == Key::P && !combat.gameOver())
+    else if (key == Key::P && !combat.finished())
     {
         paused = !paused;
         pressed.clear();
         if (audio)
             audio->setPlaying(!paused);
     }
-    else if (!paused && !combat.gameOver())
+    else if (!paused && !combat.finished())
         pressed.insert(key);
 }
 
@@ -122,7 +122,7 @@ void Game::update(float dt)
     {
         const float realSlice = std::min(dt, Combat::maxStep);
         const float worldSlice = realSlice * combat.timeScale();
-        if (!combat.gameOver())
+        if (!combat.finished())
             player.update(direction, sf::seconds(worldSlice), fieldSize);
         combat.update(realSlice, player.getPosition(), player.muzzleOffset());
         worldDt += worldSlice;

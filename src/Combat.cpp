@@ -75,6 +75,16 @@ int barrageStage(double elapsed)
     return static_cast<int>(std::upper_bound(thresholds.begin(), thresholds.end(), elapsed) - thresholds.begin());
 }
 
+float frontIntensity(unsigned level)
+{
+    return static_cast<float>(level - 1) / (Combat::levelCount - 1);
+}
+
+int squadronHealth(int base, unsigned level)
+{
+    return base + (base * static_cast<int>(level - 1) + 3) / 6;
+}
+
 struct CannonPattern
 {
     int spread;
@@ -117,6 +127,8 @@ constexpr EnemyStats stats(EnemyKind kind)
         case EnemyKind::BattleshipTurret: return {15.f, Battleship::turretHealth, 0.f, 0.f, 0.f, 0.f, 250};
         case EnemyKind::CarrierPart: return {12.f, 40, 0.f, 0.f, 0.f, 0.f, 350};
         case EnemyKind::CarrierHull: return {16.f, CarrierRaid::baseHealth, 0.f, 0.f, 0.f, 0.f, 2500};
+        case EnemyKind::StageBossCore:
+        case EnemyKind::StageBossMount: return {}; // The encounter owns armor, movement and salvos.
     }
     return {};
 }
@@ -410,8 +422,45 @@ void Combat::reset()
 
 void Combat::setPowerInput(bool precisionHeld, bool guidanceHeld)
 {
-    precision_.held = precisionHeld;
-    guidance_.held = guidanceHeld;
+    const bool flying = !finished() && !levelCleared();
+    precision_.held = flying && precisionHeld;
+    guidance_.held = flying && guidanceHeld;
+}
+
+bool Combat::levelCleared() const
+{
+    if (level_ > 1)
+        return stageBoss_ && stageBoss_->health == 0;
+    return carrierRaid_.phase == CarrierPhase::Sinking || carrierRaid_.phase == CarrierPhase::Aftermath ||
+           carrierRaid_.phase == CarrierPhase::Finished;
+}
+
+void Combat::clearEncounters()
+{
+    enemies_.clear();
+    shots_.clear();
+    fadingTrails_.clear();
+    laserPulses_.clear();
+    fireRatePickup_.reset();
+    chargedTip_ = 0;
+    tipTimeLeft_ = braidTimeLeft_ = 0.f;
+}
+
+void Combat::finishLevel()
+{
+    if (level_ == levelCount)
+    {
+        campaignWon_ = true;
+        return;
+    }
+    ++level_;
+    levelStartTime_ = elapsed_;
+    levelStartDistance_ = distance_;
+    clearAge_ = 0.f;
+    nextFormation_ = 2.6f;
+    nextPatrol_ = 8.f;
+    formation_ = 0;
+    stageBoss_.reset();
 }
 
 const Enemy* Combat::bossTurret(TurretKind kind) const
@@ -439,6 +488,8 @@ const Enemy* Combat::guidanceTarget(const Enemy* excluded) const
             continue;
         // Equal classes retain formation order instead of switching on every hit.
         const auto priority = [this](const Enemy& target) {
+            if (target.kind == EnemyKind::StageBossMount)
+                return stageBoss_->maxHealth + 1;
             return target.kind == EnemyKind::CarrierPart ? carrierRaid_.maxHealth + 1 : target.maxHealth();
         };
         if (!best || priority(enemy) > priority(*best))
@@ -558,7 +609,7 @@ sf::Vector2f Combat::screenShakeOffset() const
 
 void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffset)
 {
-    if (!std::isfinite(dt) || dt <= 0.f)
+    if (!std::isfinite(dt) || dt <= 0.f || campaignWon_)
         return;
 
     const bool hadMilestone = !milestones_.empty();
@@ -584,6 +635,8 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
         if (!gameOver())
         {
             step(slice, playerPosition, muzzleOffset);
+            if (campaignWon_)
+                break;
             precision_.advance(realSlice, elapsed_, 4.f, 8.f);
             guidance_.advance(realSlice, elapsed_, 5.f, 10.f);
         }
@@ -632,27 +685,55 @@ void Combat::step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffs
     }
     const float pressure = flightPressure(elapsed_);
     const float opening = std::min(elapsed(), openingDuration);
-    distance_ += dt * (105.f + 0.5f * opening + 220.f * pressure);
+    const float front = frontIntensity(level());
+    distance_ += dt * (105.f + 0.5f * opening + 220.f * pressure) * (1.f + 0.16f * front);
     grace_ = std::max(0.f, grace_ - dt);
-    updateCarrier(dt, playerPosition);
-    if (!carrierRaid_.occupiesWater())
-        updateBattleship(dt);
+    if (levelCleared())
+    {
+        clearAge_ += dt;
+        arsenalMuzzle_ = playerPosition + muzzleOffset;
+        if (!drones_.empty())
+            updateDrones(dt, playerPosition);
+        if (level_ == 1)
+            updateCarrier(dt, playerPosition);
+        if (level_ == 1 ? carrierRaid_.phase == CarrierPhase::Finished : clearAge_ >= 2.6f)
+            finishLevel();
+        return;
+    }
+    if (level_ == 1)
+    {
+        updateCarrier(dt, playerPosition);
+        if (!carrierRaid_.occupiesWater())
+            updateBattleship(dt);
+    }
+    else
+    {
+        if (!stageBoss_ && levelTime() >= bossArrival())
+        {
+            clearEncounters();
+            explosions_.clear();
+            chains_.clear();
+            startStageBoss(level_);
+        }
+        if (stageBoss_)
+            updateStageBoss(dt, playerPosition);
+    }
     // Keep a few aerial escorts during the encounter and give the battleship the water lane.
     const float aerialRate = carrierRaid_.phase == CarrierPhase::Approach ? 0.f :
                              carrierRaid_.occupiesWater() ? 0.18f : battleship_ ? 0.35f : 1.f;
     nextFormation_ -= aerialRate * dt;
-    if (nextFormation_ <= 0.f)
+    if (!stageBoss_ && nextFormation_ <= 0.f)
     {
         spawnFormation();
-        nextFormation_ += (2.95f - 0.022f * opening) / (1.f + 2.65f * pressure);
+        nextFormation_ += (2.95f - 0.022f * opening) / ((1.f + 2.65f * pressure) * (1.f + 0.24f * front));
     }
-    if (!battleship_ && !carrierRaid_.occupiesWater())
+    if (!stageBoss_ && !battleship_ && !carrierRaid_.occupiesWater())
     {
-        nextBoat_ -= dt;
-        if (nextBoat_ <= 0.f)
+        nextPatrol_ -= dt;
+        if (nextPatrol_ <= 0.f)
         {
-            spawnBoat();
-            nextBoat_ += (13.5f - 0.055f * opening) / (1.f + 0.94f * pressure);
+            spawnPatrol();
+            nextPatrol_ += (13.5f - 0.055f * opening) / ((1.f + 0.94f * pressure) * (1.f + 0.30f * front));
         }
     }
     updatePickup(dt, playerPosition);
@@ -666,6 +747,11 @@ void Combat::step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffs
         updateBraid(dt);
     updateShots(dt);
     collide(playerPosition, hadShield ? previousMuzzle : arsenalMuzzle_, dt);
+    if (levelCleared())
+    {
+        clearEncounters();
+        setPowerInput(false, false);
+    }
     if (weaponMode_ == WeaponMode::Arsenal && !gameOver())
         updateDrones(dt, playerPosition);
 }
@@ -675,9 +761,14 @@ void Combat::spawnFormation()
     // Alternating entry lanes and silhouettes leave readable routes through each wave.
     constexpr std::array<float, 8> lanes{270.f, 144.f, 375.f, 190.f, 348.f, 230.f, 397.f, 150.f};
     const float lane = lanes[formation_ % lanes.size()];
-    const unsigned pattern = formation_ % 4;
+    const unsigned slot = formation_ % 8;
+    unsigned pattern = slot % 4;
+    if (level() >= 2 && slot == 4) pattern = 4;
+    if (level() >= 5 && slot == 1) pattern = 5;
+    if (level() >= 8 && slot == 6) pattern = 6;
     const float mirror = (formation_ / 4) % 2 == 0 ? 1.f : -1.f;
-    const float flightSpeed = 1.f + 0.7f * flightPressure(elapsed_);
+    const float front = frontIntensity(level());
+    const float flightSpeed = (1.f + 0.7f * flightPressure(elapsed_)) * (1.f + 0.16f * front);
     auto add = [&](EnemyKind kind, float delayX, float offsetY, float phase,
                    FlightPath flight = FlightPath::Weave, bool rear = false) {
         const auto type = stats(kind);
@@ -687,8 +778,10 @@ void Combat::spawnFormation()
         // The heavy convoy holds formation so its escorts stay within shockwave range.
         const float speedScale = pattern == 3 ? 1.f : std::uniform_real_distribution<float>{0.82f, 1.22f}(flightRandom_);
         const float speed = (flight == FlightPath::Pursuit ? 181.f : type.speed) * flightSpeed;
-        enemies_.push_back({kind, {x, y}, {(rear ? 1.f : -1.f) * speed * speedScale, 0.f}, type.radius, 0.f, type.health,
-                            center, phase, 0.72f + delayX * 0.002f, 0, 0.f});
+        // Delayed aircraft fire after entry; stagger the first volleys within a fast formation.
+        const float ready = 0.72f + delayX * 0.002f;
+        enemies_.push_back({kind, {x, y}, {(rear ? 1.f : -1.f) * speed * speedScale, 0.f}, type.radius, 0.f,
+                            squadronHealth(type.health, level()), center, phase, ready, 0, 0.f});
         enemies_.back().flight = flight;
     };
 
@@ -738,9 +831,34 @@ void Combat::spawnFormation()
             else
                 add(EnemyKind::Scout, 85.f, 82.f, pi);
             break;
+        case 4: // Two pairs screen a high or low corridor; neither pair crosses it.
+        {
+            const float opening = (formation_ / 8) % 2 ? 180.f : 345.f;
+            for (const float side : {-1.f, 1.f})
+            {
+                const float flank = opening + side * 123.f - lane;
+                add(EnemyKind::Striker, 20.f, flank, side * 0.8f);
+                add(EnemyKind::Scout, 140.f, flank + side * 28.f, side * 1.4f);
+            }
+            break;
+        }
+        case 5: // Two marked hunters approach from opposite sides on different beats.
+            add(EnemyKind::Scout, 0.f, 62.f, 0.f, FlightPath::CrossLane);
+            add(EnemyKind::Striker, 88.f, -56.f, 0.5f, FlightPath::Pursuit, true);
+            add(EnemyKind::Striker, 295.f, 108.f, 1.6f, FlightPath::Pursuit);
+            break;
+        case 6: // A forward heavy draws fire before a second heavy enters the other lane.
+        {
+            const float wing = lane < height * 0.5f ? 367.f : 163.f;
+            add(EnemyKind::Gunship, 0.f, 0.f, 0.f);
+            add(EnemyKind::Scout, 76.f, 46.f, 0.7f);
+            add(EnemyKind::Gunship, 190.f, wing - lane, pi);
+            add(EnemyKind::Striker, 305.f, wing - lane + 45.f, 0.5f, FlightPath::CrossLane);
+            break;
+        }
     }
     const int stage = barrageStage(elapsed_);
-    if (pattern != 3 && stage >= 2)
+    if (pattern < 3 && stage >= 2)
     {
         const float farLane = lane < height * 0.5f ? 388.f : 146.f;
         add(EnemyKind::Striker, 156.f, farLane - lane, 0.8f, FlightPath::CrossLane);
@@ -752,11 +870,19 @@ void Combat::spawnFormation()
 
 void Combat::updateEnemies(float dt, sf::Vector2f playerPosition)
 {
-    const float fireRate = 1.f + 0.004f * std::min(elapsed(), openingDuration) + 0.82f * flightPressure(elapsed_);
+    const float fireRate = (1.f + 0.004f * std::min(elapsed(), openingDuration) + 0.82f * flightPressure(elapsed_)) *
+                           (1.f + 0.28f * frontIntensity(level()));
     for (auto& enemy : enemies_)
     {
         enemy.age += dt;
         enemy.hitFlash = std::max(0.f, enemy.hitFlash - dt);
+        if (enemy.stageBossPart())
+        {
+            const auto next = enemy.kind == EnemyKind::StageBossCore ? stageBoss_->position : stageBoss_->mount(enemy.bossMount);
+            enemy.velocity = (next - enemy.position) / dt;
+            enemy.position = next;
+            continue;
+        }
         if (enemy.kind == EnemyKind::CarrierPart || enemy.kind == EnemyKind::CarrierHull)
         {
             const auto mount = carrierRaid_.mount(enemy.carrierPart);
@@ -823,8 +949,9 @@ void Combat::fireEnemy(Enemy& enemy, sf::Vector2f playerPosition)
     const float angle = std::atan2(aim.y, aim.x);
     const float opening = std::min(elapsed(), openingDuration);
     const float pressure = flightPressure(elapsed_);
-    const float speed = 130.f + 0.95f * opening + 104.f * pressure;
-    const int stage = barrageStage(elapsed_);
+    const float shotSpeed = 1.f + 0.22f * frontIntensity(level());
+    const float speed = (130.f + 0.95f * opening + 104.f * pressure) * shotSpeed;
+    const int stage = barrageStage(elapsed_) + static_cast<int>((level() - 1) / 2);
     const int extraPairs = (stage + static_cast<int>(enemy.volleys % 2)) / 2;
     switch (enemy.kind)
     {
@@ -843,26 +970,42 @@ void Combat::fireEnemy(Enemy& enemy, sf::Vector2f playerPosition)
         case EnemyKind::PatrolBoat:
         {
             const auto direction = enemy.turretDirection();
-            const float shellSpeed = 190.f + 0.6f * opening + 70.f * pressure;
+            const float shellSpeed = (190.f + 0.6f * opening + 70.f * pressure) * shotSpeed;
             fireEnemyFan(enemy.turretMuzzle(), std::atan2(direction.y, direction.x), (stage + 1) / 3, 0.26f,
                          shellSpeed, ShotKind::EnemyOrb, 5.f);
             break;
         }
         case EnemyKind::CarrierPart:
         case EnemyKind::CarrierHull:
+        case EnemyKind::StageBossCore:
+        case EnemyKind::StageBossMount:
         case EnemyKind::BattleshipTurret:
             return; // The deck batteries have their own aim and burst timers.
     }
     ++enemy.volleys;
 }
 
-void Combat::spawnBoat()
+void Combat::spawnPatrol()
 {
+    const float pace = (1.f + 0.7f * flightPressure(elapsed_)) * (1.f + 0.16f * frontIntensity(level()));
+    if (level() == 9)
+    {
+        // Over the cloud sea, two low-flying scouts climb toward the middle in succession.
+        const auto type = stats(EnemyKind::Scout);
+        for (int i = 0; i < 2; ++i)
+        {
+            const float lane = 402.f + i * 46.f;
+            enemies_.push_back({EnemyKind::Scout, {width + type.radius + 90.f * i, lane}, {-type.speed * pace, 0.f},
+                                type.radius, 0.f, squadronHealth(type.health, level()), lane, 0.f, 0.85f + i * 0.45f, 0, 0.f});
+            enemies_.back().flight = FlightPath::CrossLane;
+        }
+        return;
+    }
     const auto type = stats(EnemyKind::PatrolBoat);
     const float lane = 506.f + 6.f * std::sin(elapsed_);
-    const float speed = (type.speed + 15.f * std::sin(elapsed_ * 0.47f)) * (1.f + 0.7f * flightPressure(elapsed_));
+    const float speed = (type.speed + 15.f * std::sin(elapsed_ * 0.47f)) * pace;
     enemies_.push_back({EnemyKind::PatrolBoat, {width + 36.f, lane}, {-speed, 0.f},
-                        type.radius, 0.f, type.health, lane, 0.f, 1.2f, 0, 0.f});
+                        type.radius, 0.f, squadronHealth(type.health, level()), lane, 0.f, 1.2f, 0, 0.f});
 }
 
 void Combat::updateBoat(Enemy& boat, float dt, sf::Vector2f playerPosition)
@@ -882,7 +1025,7 @@ void Combat::updateBoat(Enemy& boat, float dt, sf::Vector2f playerPosition)
         return;
     if (aim.lengthSquared() >= 125.f * 125.f)
         fireEnemy(boat, playerPosition);
-    boat.fireTimer += type.reload / (1.f + 0.56f * flightPressure(elapsed_));
+    boat.fireTimer += type.reload / ((1.f + 0.56f * flightPressure(elapsed_)) * (1.f + 0.28f * frontIntensity(level())));
 }
 
 void Combat::updateBattleship(float dt)
@@ -1199,8 +1342,10 @@ void Combat::fireLaser(sf::Vector2f muzzle)
 
     laserPulses_.clear();
     std::optional<sf::Vector2f> hullHit;
-    std::array<std::optional<sf::Vector2f>, 7> navalHits{};
-    const auto navalIndex = [](const Enemy& enemy) {
+    std::array<std::optional<sf::Vector2f>, 11> bossHits{};
+    const auto bossPartIndex = [](const Enemy& enemy) {
+        if (enemy.stageBossPart())
+            return std::size_t{7} + (enemy.kind == EnemyKind::StageBossCore ? 0 : 1 + enemy.bossMount);
         return enemy.kind == EnemyKind::BattleshipTurret ? static_cast<std::size_t>(enemy.turretKind) :
                                                          3 + static_cast<std::size_t>(enemy.carrierPart);
     };
@@ -1217,25 +1362,28 @@ void Combat::fireLaser(sf::Vector2f muzzle)
         const auto hull = battleship_ ? battleship_->hullRayHit(muzzle, direction, reach, LaserPulse::radius)
                                       : std::nullopt;
         reach = hull.value_or(reach);
-        const Enemy* turret = nullptr;
+        const Enemy* blocker = nullptr;
         for (const auto& enemy : enemies_)
         {
-            if (enemy.health <= 0 || (enemy.kind != EnemyKind::BattleshipTurret &&
-                enemy.kind != EnemyKind::CarrierPart && enemy.kind != EnemyKind::CarrierHull))
+            if (enemy.health <= 0 || !enemy.bossPart())
                 continue;
-            const auto hit = enemy.kind == EnemyKind::CarrierHull
-                ? carrierRaid_.hullRayHit(muzzle, direction, reach, LaserPulse::radius)
-                : rayCircleHit(muzzle, direction, reach, enemy.position, enemy.radius + LaserPulse::radius);
+            std::optional<float> hit;
+            if (enemy.kind == EnemyKind::StageBossCore)
+                hit = stageBoss_->hullRayHit(muzzle, direction, reach, LaserPulse::radius);
+            else if (enemy.kind == EnemyKind::CarrierHull)
+                hit = carrierRaid_.hullRayHit(muzzle, direction, reach, LaserPulse::radius);
+            else
+                hit = rayCircleHit(muzzle, direction, reach, enemy.position, enemy.radius + LaserPulse::radius);
             if (hit)
             {
                 reach = *hit;
-                turret = &enemy;
+                blocker = &enemy;
             }
         }
         const auto end = muzzle + direction * reach;
         laserPulses_.push_back({muzzle, end, 0.f, rank});
-        if (turret)
-            navalHits[navalIndex(*turret)] = end;
+        if (blocker)
+            bossHits[bossPartIndex(*blocker)] = end;
         else if (hull)
             hullHit = end;
     };
@@ -1262,10 +1410,9 @@ void Combat::fireLaser(sf::Vector2f muzzle)
     {
         if (enemy.health <= 0)
             continue;
-        if (enemy.kind == EnemyKind::BattleshipTurret || enemy.kind == EnemyKind::CarrierPart ||
-            enemy.kind == EnemyKind::CarrierHull)
+        if (enemy.bossPart())
         {
-            if (const auto& hit = navalHits[navalIndex(enemy)])
+            if (const auto& hit = bossHits[bossPartIndex(enemy)])
                 damage(enemy, pulseDamage, 0, *hit);
             continue;
         }
@@ -1531,7 +1678,7 @@ void Combat::explodeEnemy(const Enemy& enemy, unsigned chainId)
 
 void Combat::hitPlayer(sf::Vector2f position)
 {
-    if (invulnerable() || gameOver())
+    if (invulnerable() || finished() || levelCleared())
         return;
     --lives_;
     chargedTip_ = 0;
@@ -1606,6 +1753,11 @@ void Combat::damage(Enemy& enemy, int amount, unsigned chainId, std::optional<sf
 {
     if (enemy.health <= 0)
         return;
+    if (enemy.stageBossPart())
+    {
+        damageStageBoss(enemy, amount, impact.value_or(enemy.position), chainId);
+        return;
+    }
     if (enemy.kind == EnemyKind::CarrierPart || enemy.kind == EnemyKind::CarrierHull)
     {
         damageCarrier(enemy, amount, impact.value_or(enemy.position), chainId);
@@ -1626,8 +1778,8 @@ void Combat::damage(Enemy& enemy, int amount, unsigned chainId, std::optional<sf
 void Combat::hitEnemies(Shot& shot)
 {
     const auto touches = [&](const Enemy& enemy, float radius) {
-        if (enemy.kind == EnemyKind::CarrierHull)
-            return enemy.health > 0 && (carrierRaid_.nearestHullPoint(shot.position) - shot.position).lengthSquared() <= radius * radius;
+        if (enemy.solidHull())
+            return enemy.health > 0 && (hullContact(enemy, shot.position) - shot.position).lengthSquared() <= radius * radius;
         return enemy.health > 0 && enemy.position.x >= 0.f && enemy.position.x <= width &&
                overlaps(shot.position, radius, enemy.position, enemy.radius);
     };
@@ -1656,8 +1808,7 @@ void Combat::hitEnemies(Shot& shot)
     for (auto enemy = enemies_.begin(); enemy != enemies_.end(); ++enemy)
         if (touches(*enemy, waveBlastRadius))
         {
-            const auto impact = enemy->kind == EnemyKind::CarrierHull
-                ? carrierRaid_.nearestHullPoint(shot.position) : enemy->position;
+            const auto impact = hullContact(*enemy, shot.position);
             damage(*enemy, shot.kind == ShotKind::Missile && enemy == hit ? 5 : 2, 0, impact);
         }
     if (battleship_ && battleship_->touchesHull(shot.position, waveBlastRadius))
@@ -1693,16 +1844,18 @@ void Combat::sweepGunshipShockwaves()
         const int healthBefore = bossHealth();
         for (auto& enemy : enemies_)
         {
-            const bool carrierHull = enemy.kind == EnemyKind::CarrierHull;
-            const auto point = carrierHull ? carrierRaid_.nearestHullPoint(wave.position) : enemy.position;
+            const bool solidHull = enemy.solidHull();
+            const auto point = hullContact(enemy, wave.position);
             if (enemy.health <= 0 || enemy.position.x < 0.f || enemy.position.x > width ||
-                !touchesFront(point, carrierHull ? 0.f : enemy.radius))
+                !touchesFront(point, solidHull ? 0.f : enemy.radius))
                 continue;
             auto& hits = enemy.shockwavesHit;
             if (std::find(hits.begin(), hits.end(), wave.seed) != hits.end())
                 continue;
-            const bool inCore = overlaps(wave.position, coreRadius, point, carrierHull ? 0.f : enemy.radius);
-            damage(enemy, inCore ? stats(EnemyKind::Gunship).health : 3, wave.chainId, point);
+            const bool inCore = overlaps(wave.position, coreRadius, point, solidHull ? 0.f : enemy.radius);
+            // A close shockwave can still set off the reinforced gunships in later sectors.
+            const int coreDamage = enemy.kind == EnemyKind::Gunship ? enemy.maxHealth() : stats(EnemyKind::Gunship).health;
+            damage(enemy, inCore ? coreDamage : 3, wave.chainId, point);
             if (enemy.health > 0)
                 hits.push_back(wave.seed);
         }
@@ -1752,13 +1905,13 @@ void Combat::collide(sf::Vector2f playerPosition, sf::Vector2f previousMuzzle, f
         hitPlayer(playerPosition);
     for (auto& enemy : enemies_)
     {
-        const bool carrierHull = enemy.kind == EnemyKind::CarrierHull;
-        const bool collision = carrierHull
-            ? (carrierRaid_.nearestHullPoint(playerPosition) - playerPosition).lengthSquared() <= playerHitRadius * playerHitRadius
+        const bool solid = enemy.solidHull();
+        const bool collision = solid
+            ? (hullContact(enemy, playerPosition) - playerPosition).lengthSquared() <= playerHitRadius * playerHitRadius
             : overlaps(enemy.position, enemy.radius, playerPosition, playerHitRadius);
         if (enemy.health > 0 && !invulnerable() && collision)
         {
-            if (enemy.kind != EnemyKind::BattleshipTurret && enemy.kind != EnemyKind::CarrierPart && !carrierHull)
+            if (!enemy.bossPart())
             {
                 enemy.health = 0;
                 explodeEnemy(enemy);
@@ -1784,6 +1937,6 @@ void Combat::collide(sf::Vector2f playerPosition, sf::Vector2f previousMuzzle, f
     enemies_.erase(std::remove_if(enemies_.begin(), enemies_.end(), [](const Enemy& enemy) {
         const bool leftField = enemy.velocity.x <= 0.f ? enemy.position.x < -enemy.radius
                                                       : enemy.position.x > width + enemy.radius;
-        return enemy.health <= 0 || (enemy.kind != EnemyKind::BattleshipTurret && leftField);
+        return enemy.health <= 0 || (enemy.kind != EnemyKind::BattleshipTurret && !enemy.stageBossPart() && leftField);
     }), enemies_.end());
 }

@@ -26,6 +26,12 @@ add_executable(KillEmAll
     src/CarrierRaid.hpp
     src/CarrierRenderer.cpp
     src/CarrierRenderer.hpp
+    src/CampaignScenery.cpp
+    src/CampaignScenery.hpp
+    src/StageBoss.cpp
+    src/StageBoss.hpp
+    src/StageBossRenderer.cpp
+    src/StageBossRenderer.hpp
     src/BattleRenderer.cpp
     src/BattleRenderer.hpp
     src/GameAudio.cpp

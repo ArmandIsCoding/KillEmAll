@@ -1,5 +1,6 @@
 #include "BattleRenderer.hpp"
 #include "CarrierRenderer.hpp"
+#include "StageBossRenderer.hpp"
 #include "Combat.hpp"
 
 #include <SFML/Graphics/Image.hpp>
@@ -1345,7 +1346,7 @@ namespace
 }
 
 BattleRenderer::BattleRenderer(const std::filesystem::path& arcadeDirectory)
-	: coastLayers(arcadeDirectory / "coast-parallax.png"), enemyAtlas(arcadeDirectory / "enemies.png"),
+	: campaignScenery(arcadeDirectory), coastLayers(arcadeDirectory / "coast-parallax.png"), enemyAtlas(arcadeDirectory / "enemies.png"),
 	burstAtlas(arcadeDirectory / "burst.png"), battleshipHull(arcadeDirectory / "battleship-hull.png"),
 	battleshipFlashMask(whiteSilhouette(battleshipHull)), carrierHull(arcadeDirectory / "carrier-hull.png"),
 	droneHull(arcadeDirectory / "orbital-drone.png")
@@ -1353,7 +1354,7 @@ BattleRenderer::BattleRenderer(const std::filesystem::path& arcadeDirectory)
 	coastLayers.setRepeated(true);
 }
 
-void BattleRenderer::drawBackground(sf::RenderTarget& target, const Combat& combat)
+void BattleRenderer::drawPort(sf::RenderTarget& target, const Combat& combat)
 {
 	const float elapsedSeconds = combat.elapsed();
 	const double distance = combat.distance();
@@ -1415,12 +1416,18 @@ void BattleRenderer::drawBackground(sf::RenderTarget& target, const Combat& comb
 	geometry.clear();
 	harbourLights(geometry, elapsedSeconds, harbourOffset, night, raid);
 	water(geometry, elapsedSeconds, distance, night);
+	drawBatch(target, geometry);
 	if (raid.phase == CarrierPhase::Approach || raid.phase == CarrierPhase::Battle)
-	{
-		drawBatch(target, geometry);
-		geometry.clear();
 		drawCarrierSky(target, combat);
-	}
+}
+
+void BattleRenderer::drawBackground(sf::RenderTarget& target, const Combat& combat)
+{
+	if (combat.level() == 1)
+		drawPort(target, combat);
+	else
+		campaignScenery.draw(target, combat.level(), combat.levelDistance(), combat.levelTime());
+	geometry.clear();
 	for (const auto& enemy : combat.enemies())
 		if (enemy.flight == FlightPath::Pursuit || enemy.flight == FlightPath::Breakaway)
 			hunterSignal(geometry, enemy);
@@ -1445,12 +1452,14 @@ void BattleRenderer::drawEnemies(sf::RenderTarget& target, const Combat& combat)
 	foreground.clear();
 	const float night = nightfall(combat.elapsed());
 	drawCarrier(target, combat, carrierHull);
+	drawStageBoss(target, combat);
 	if (const auto& ship = combat.battleship())
 		drawBattleship(target, foreground, battleshipHull, battleshipFlashMask, combat, *ship, night);
 	for (const Enemy& enemy : combat.enemies())
 	{
 		if (enemy.kind == EnemyKind::BattleshipTurret || enemy.kind == EnemyKind::CarrierPart ||
-		    enemy.kind == EnemyKind::CarrierHull)
+		    enemy.kind == EnemyKind::CarrierHull || enemy.kind == EnemyKind::StageBossCore ||
+		    enemy.kind == EnemyKind::StageBossMount)
 			continue;
 		if (enemy.kind == EnemyKind::PatrolBoat)
 		{

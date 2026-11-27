@@ -21,6 +21,11 @@ constexpr sf::Color dim{145, 174, 166};
 constexpr sf::Color ivory{255, 237, 201};
 constexpr sf::Color gold{255, 185, 86};
 constexpr sf::Color cyan{97, 224, 201};
+constexpr std::array<const char32_t*, Combat::levelCount> levelNames{{
+    U"COSTA INDUSTRIAL", U"EL DESGUACE", U"ARCHIPI\u00c9LAGO DE TORMENTAS", U"FIORDO POLAR",
+    U"REFINER\u00cdA DEL DESIERTO", U"SELVA INUNDADA", U"CALDERA VOLC\u00c1NICA", U"CIUDAD NE\u00d3N",
+    U"MAR DE NUBES", U"FORTALEZA DEL ECLIPSE"
+}};
 
 void rect(sf::RenderTarget& target, float x, float y, float w, float h, sf::Color color)
 {
@@ -231,19 +236,42 @@ void pausePanel(sf::RenderTarget& target, const sf::Font& font, bool muted, Weap
     label(target, font, U"SI AGOT\u00c1S UNA BARRA, ESPER\u00c1 LA RECARGA COMPLETA.", 243, 476, 9, dim);
 }
 
-void endPanel(sf::RenderTarget& target, const sf::Font& font, std::uint64_t score, std::uint64_t bestScore, int bestCombo)
+void campaignBossMeter(sf::RenderTarget& target, const sf::Font& font, const StageBoss& boss)
+{
+    const sf::Color accent = boss.critical() ? sf::Color{253, 117, 92} : gold;
+    rect(target, 265, 63, 430, 35, {15, 27, 34, 242});
+    rect(target, 265, 63, 3, 35, accent);
+    label(target, font, StageBoss::name(boss.level), 277, 70, 10, ivory);
+    rect(target, 421, 69, 218, 9, seam);
+    const float life = static_cast<float>(boss.health) / boss.maxHealth;
+    rect(target, 423, 71, std::ceil(214.f * life), 5, boss.hitFlash > 0.f ? ivory : accent);
+    const auto percent = std::to_string(static_cast<int>(std::ceil(100.f * life))) + "%";
+    label(target, font, percent, 685.f - 9.f * percent.size(), 70, 9, ivory);
+    label(target, font, U"BATER\u00cdAS", 277, 86, 7, dim);
+    const float width = 214.f / boss.mountCount();
+    for (unsigned i = 0; i < boss.mountCount(); ++i)
+    {
+        const float x = 423.f + width * i;
+        rect(target, x, 85, width - 3.f, 5, seam);
+        rect(target, x, 85, (width - 3.f) * boss.mountHealth[i] / boss.mountMaxHealth, 5, cyan);
+    }
+}
+
+void endPanel(sf::RenderTarget& target, const sf::Font& font, const Combat& combat, std::uint64_t bestScore)
 {
     panel(target, 216, 170, 528, 292, gold);
-    label(target, font, "FIN DE PARTIDA", 248, 200, 27, ivory);
+    label(target, font, combat.campaignWon() ? U"CAMPA\u00d1A COMPLETA" : U"FIN DE PARTIDA", 248, 192, 26, ivory);
+    label(target, font, sf::String("NIVEL " + std::to_string(combat.level()) + "  /  ") +
+          levelNames[combat.level() - 1], 248, 231, 9, cyan);
     rect(target, 248, 250, 464, 2, seam);
     label(target, font, "PUNTOS", 248, 273, 9, dim);
-    const auto points = scoreNumber(score);
+    const auto points = scoreNumber(combat.score());
     label(target, font, points, 248, 297, std::min(24u, 218u / static_cast<unsigned>(points.size())), gold);
     label(target, font, U"R\u00c9CORD DE SESI\u00d3N", 487, 273, 9, dim);
-    const auto record = scoreNumber(std::max(score, bestScore));
+    const auto record = scoreNumber(std::max(combat.score(), bestScore));
     label(target, font, record, 487, 299, std::min(19u, 225u / static_cast<unsigned>(record.size())), ivory);
     label(target, font, "MEJOR COMBO", 248, 343, 10, dim);
-    label(target, font, bestCombo > 0 ? "x" + std::to_string(bestCombo) : "NINGUNO", 388, 339, 16, cyan);
+    label(target, font, combat.bestCombo() > 0 ? "x" + std::to_string(combat.bestCombo()) : "NINGUNO", 388, 339, 16, cyan);
     rect(target, 248, 374, 464, 2, seam);
     keycap(target, font, "ENTER", 248, 397, 72);
     label(target, font, "VOLVER A JUGAR", 334, 403, 12, ivory);
@@ -272,16 +300,19 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     label(target, font, "PUNTOS", 16, 9, 9, dim);
     const auto score = scoreNumber(combat.score());
     label(target, font, score, 16, 25, std::min(21u, 144u / static_cast<unsigned>(score.size())), gold);
-    const bool flying = !paused && !combat.gameOver();
+    const bool flying = !paused && !combat.finished();
     const bool bossVisible = combat.battleship().has_value() && !combat.gameOver();
     const auto raidPhase = combat.carrierRaid().phase;
     const bool carrierVisible = !combat.gameOver() &&
         (raidPhase == CarrierPhase::Battle || raidPhase == CarrierPhase::Sinking);
-    if (carrierVisible)
+    const bool stageBossVisible = !combat.finished() && combat.stageBoss() && combat.stageBoss()->health > 0;
+    if (stageBossVisible)
+        campaignBossMeter(target, font, *combat.stageBoss());
+    else if (carrierVisible)
         carrierMeter(target, font, combat);
     else if (bossVisible)
         bossMeter(target, font, combat);
-    const float noticeTop = carrierVisible ? 108.f : bossVisible ? 91.f : 60.f;
+    const float noticeTop = carrierVisible ? 108.f : stageBossVisible ? 101.f : bossVisible ? 91.f : 60.f;
     const float lifeFlash = flying ? combat.lifeRecoveryFlash() : 0.f;
     if (lifeFlash > 0.f)
         lifeRecoveryNotice(target, font, lifeFlash);
@@ -391,24 +422,36 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     abilityMeter(target, font, "ESPACIO", "GUIADO", 31, combat.guidanceCharge(),
                  flying && combat.guidanceActive(), combat.guidanceRecharging(),
                  gold, refillFlash(combat.guidanceRefillAge()));
-    label(target, font, "DISTANCIA", 707, 9, 9, dim);
+    const auto level = "NIVEL " + std::to_string(combat.level()) + "/" + std::to_string(Combat::levelCount);
+    label(target, font, level, 707, 9, 9, cyan);
     const auto meters = std::to_string(static_cast<long long>(combat.distance())) + " m";
     label(target, font, meters, 707, 28, std::min(15u, 121u / static_cast<unsigned>(meters.size())), ivory);
-    if (!combat.gameOver())
+    if (!combat.finished())
     {
         keycap(target, font, "P", 857, 18, 27);
         label(target, font, paused ? "SEGUIR" : "PAUSA", 895, 25, 9, dim);
     }
 
-    if (combat.gameOver())
-        endPanel(target, font, combat.score(), bestScore, combat.bestCombo());
+    if (combat.finished())
+        endPanel(target, font, combat, bestScore);
     else if (paused)
         pausePanel(target, font, muted, mode);
-    else if (combat.elapsed() < 2.8f)
+    else if (combat.levelTime() < 2.8f || combat.levelCleared())
     {
         rect(target, 22, 524, 410, 58, {14, 27, 33, 233});
-        rect(target, 22, 524, 4, 58, gold);
-        label(target, font, "COSTA INDUSTRIAL", 38, 535, 16, ivory);
-        label(target, font, U"WASD / FLECHAS   DISPARO AUTOM\u00c1TICO", 38, 565, 9, dim);
+        rect(target, 22, 524, 4, 58, combat.levelCleared() ? gold : cyan);
+        label(target, font, levelNames[combat.level() - 1], 38, 534, 15, ivory);
+        if (combat.levelCleared())
+            label(target, font, "NIVEL SUPERADO", 38, 564, 10, gold);
+        else if (combat.level() == 1)
+            label(target, font, U"WASD / FLECHAS   DISPARO AUTOM\u00c1TICO", 38, 565, 9, dim);
+        else
+            label(target, font, std::string("OBJETIVO  /  ") + StageBoss::name(combat.level()), 38, 565, 9, cyan);
+    }
+    else if (combat.level() > 1 && !stageBossVisible && combat.bossArrival() - combat.levelTime() < 3.f)
+    {
+        rect(target, 22, 543, 300, 31, ink);
+        rect(target, 22, 543, 4, 31, gold);
+        label(target, font, std::string("ALERTA  /  ") + StageBoss::name(combat.level()), 36, 553, 11, gold);
     }
 }

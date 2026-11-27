@@ -1,4 +1,5 @@
 #pragma once
+#include "CampaignScenery.hpp"
 
 #include <SFML/Graphics/Texture.hpp>
 #include <SFML/Graphics/Vertex.hpp>
@@ -19,6 +20,8 @@ public:
     void drawEffects(sf::RenderTarget& target, const Combat& combat);
 
 private:
+    void drawPort(sf::RenderTarget& target, const Combat& combat);
+    CampaignScenery campaignScenery;
     sf::Texture coastLayers;
     sf::Texture enemyAtlas;
     sf::Texture burstAtlas;
