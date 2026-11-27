@@ -1,4 +1,5 @@
 #include "BattleRenderer.hpp"
+#include "CarrierRenderer.hpp"
 #include "Combat.hpp"
 
 #include <SFML/Graphics/Image.hpp>
@@ -337,7 +338,7 @@ namespace
 		return wrap(atlasX - std::floor(wrap(scroll, coastWidth)) + 64.f, coastWidth) - 64.f;
 	}
 
-	void distantHarbourLights(Batch& batch, float time, float townOffset, float night)
+	void distantHarbourLights(Batch& batch, float time, float townOffset, float night, const CarrierRaid& raid)
 	{
 		const float strength = lampIntensity(night, 0.17f);
 		if (strength <= 0.f)
@@ -348,19 +349,20 @@ namespace
 		for (const auto& tip : craneTips)
 		{
 			const float x = fixtureX(tip.x, townOffset);
-			rectangle(batch, x, tip.y, 2.f, 1.f, faded(amber, strength * 0.83f));
-			lampReflection(batch, x, 425.f, 9.f, 1.2f, amber, strength * 0.64f, time, tip.x);
+			const float light = strength * raid.harbourLight(x);
+			rectangle(batch, x, tip.y, 2.f, 1.f, faded(amber, light * 0.83f));
+			lampReflection(batch, x, 425.f, 9.f, 1.2f, amber, light * 0.64f, time, tip.x);
 		}
 		const float x = fixtureX(1200.f, townOffset);
 		const float sweep = std::max(0.f, std::cos(time * 1.6f));
-		const float beacon = strength * (0.20f + 0.8f * sweep * sweep * sweep);
+		const float beacon = strength * raid.harbourLight(x) * (0.20f + 0.8f * sweep * sweep * sweep);
 		constexpr Color lantern{255, 229, 165};
 		puff(batch, {x, 376.f}, 4.f, faded(lantern, beacon * 0.21f));
 		rectangle(batch, x - 1.f, 376.f, 3.f, 1.f, faded(lantern, beacon));
 		lampReflection(batch, x, 425.f, 15.f, 2.f, lantern, beacon, time, 0.f);
 	}
 
-	void harbourLights(Batch& batch, float time, float harbourOffset, float night)
+	void harbourLights(Batch& batch, float time, float harbourOffset, float night, const CarrierRaid& raid)
 	{
 		if (night <= 0.f)
 			return;
@@ -398,7 +400,9 @@ namespace
 			if (night <= fixture.switchAt || x > sceneWidth + 64.f)
 				continue;
 			const float t = std::min((night - fixture.switchAt) / 0.16f, 1.f);
-			const float light = t * t * (3.f - 2.f * t);
+			const float light = t * t * (3.f - 2.f * t) * raid.harbourLight(x);
+			if (light <= 0.f)
+				continue;
 			const float y = fixture.mount.y;
 			if (fixture.beamDrop > 0.f)
 			{
@@ -933,6 +937,8 @@ namespace
 		     {tail - edge * 0.15f, faded(tint, 0.f)}, {tail + edge * 0.15f, faded(tint, 0.f)});
 	}
 
+	constexpr std::array<Color, 2> braidStrands{{ {101, 252, 238}, {255, 226, 119} }};
+
 	void arsenalShield(Batch& batch, const Combat& combat)
 	{
 		const Vec muzzle = combat.arsenalMuzzle();
@@ -964,6 +970,39 @@ namespace
 			for (std::size_t band = 1; band < next.size(); ++band)
 				quad(batch, previous[band - 1], previous[band], next[band], next[band - 1]);
 			previous = next;
+		}
+		for (unsigned i = 0; i < braidStrands.size(); ++i)
+		{
+			const int side = i == 0 ? -1 : 1;
+			const float charge = combat.shieldTipGlow(side);
+			const Vec tip = Combat::arsenalShieldPoint(muzzle, static_cast<float>(side));
+			rectangle(batch, tip.x - 1.f, tip.y - 1.f, 3.f, 2.f, faded(braidStrands[i], 0.48f));
+			if (charge <= 0.f) continue;
+			const Vec inner = Combat::arsenalShieldPoint(muzzle, Combat::shieldTipStart * side);
+			streak(batch, tip, inner, (inner - tip).normalized(), 2.2f, faded(braidStrands[i], charge));
+			puff(batch, tip, 5.f + charge * 3.f, faded(braidStrands[i], 0.22f * charge));
+			rectangle(batch, tip.x - 3.f, tip.y - 1.f, 7.f, 3.f, faded(braidStrands[i], charge));
+			rectangle(batch, tip.x - 1.f, tip.y - 3.f, 3.f, 7.f, faded(Color::White, charge));
+		}
+		if (const float windup = combat.braidWindup(); windup > 0.f)
+		{
+			const Vec focus = combat.braidFocus();
+			for (unsigned i = 0; i < braidStrands.size(); ++i)
+			{
+				const Vec start = muzzle + combat.arsenalEmitterOffset(i) + Vec{4.f, 0.f};
+				Vec previousPoint = start;
+				for (int j = 1; j <= 14; ++j)
+				{
+					const float t = j / 14.f;
+					const float amplitude = (start.y - focus.y) * std::cos(tau * t) +
+					        (i == 0 ? 8.f : -8.f) * std::sin(tau * t);
+					const Vec next{start.x + (focus.x - start.x) * t, focus.y + amplitude * (1.f - t)};
+					streak(batch, previousPoint, next, (next - previousPoint).normalized(),
+					       1.f + (1.f - windup) * 1.4f, braidStrands[i]);
+					previousPoint = next;
+				}
+			}
+			puff(batch, focus, 3.f + (1.f - windup) * 7.f, {209, 255, 210});
 		}
 		if (flash > 0.f)
 		{
@@ -1017,6 +1056,34 @@ namespace
 		const float wake = power * std::min(1.f, shot.age * 12.f);
 		const Vec direction = shot.velocity != Vec{} ? shot.velocity.normalized() : Vec{ 1.f, 0.f };
 
+		if (shot.kind == ShotKind::Braid)
+		{
+			// Braid both colors around the actual trail, including turns made under guidance.
+			constexpr float duration = 0.15f;
+			const float history = std::min(shot.age, duration);
+			std::array<Vec, 2> ends{p, p};
+			for (int i = 1; i <= 24 && history > 0.f; ++i)
+			{
+				const float lookback = history * i / 24.f;
+				const float t = lookback / duration;
+				const auto sample = shot.trailSample(lookback);
+				const float twist = 10.f * std::sin(0.5f * tau * t) * std::sin(2.f * tau * t - 16.f * shot.age);
+				const Vec strandOffset = sample.velocity.normalized().perpendicular() * twist;
+				for (unsigned s = 0; s < ends.size(); ++s)
+				{
+					const Vec point = sample.position + (s == 0 ? strandOffset : -strandOffset);
+					const Vec along = point - ends[s];
+					if (along.lengthSquared() > 0.f)
+						streak(batch, ends[s], point, along.normalized(), 0.8f + 2.3f * (1.f - t),
+						       faded(braidStrands[s], 1.f - t * t));
+					ends[s] = point;
+				}
+			}
+			puff(batch, p, r * 1.4f, {104, 252, 211, 100});
+			bolt(batch, p - direction * 13.f, p + direction * r, direction, r, braidStrands[0]);
+			bolt(batch, p - direction * 8.f, p + direction * r, direction, r * 0.57f, {255, 250, 186});
+			return;
+		}
 		if (shot.kind == ShotKind::Salvo)
 		{
 			const Color tint = oscillatorLight[shot.waveSign > 0.f ? 0 : 1];
@@ -1257,7 +1324,8 @@ namespace
 BattleRenderer::BattleRenderer(const std::filesystem::path& arcadeDirectory)
 	: coastLayers(arcadeDirectory / "coast-parallax.png"), enemyAtlas(arcadeDirectory / "enemies.png"),
 	burstAtlas(arcadeDirectory / "burst.png"), battleshipHull(arcadeDirectory / "battleship-hull.png"),
-	battleshipFlashMask(whiteSilhouette(battleshipHull)), droneHull(arcadeDirectory / "orbital-drone.png")
+	battleshipFlashMask(whiteSilhouette(battleshipHull)), carrierHull(arcadeDirectory / "carrier-hull.png"),
+	droneHull(arcadeDirectory / "orbital-drone.png")
 {
 	coastLayers.setRepeated(true);
 }
@@ -1305,7 +1373,8 @@ void BattleRenderer::drawBackground(sf::RenderTarget& target, const Combat& comb
 
 	geometry.clear();
 	sunsetReflection(geometry, elapsedSeconds, distance, night);
-	distantHarbourLights(geometry, elapsedSeconds, townOffset, night);
+	const auto& raid = combat.carrierRaid();
+	distantHarbourLights(geometry, elapsedSeconds, townOffset, night, raid);
 	drawBatch(target, geometry);
 
 	textured.clear();
@@ -1321,8 +1390,14 @@ void BattleRenderer::drawBackground(sf::RenderTarget& target, const Combat& comb
 	}
 	drawBatch(target, textured, panorama);
 	geometry.clear();
-	harbourLights(geometry, elapsedSeconds, harbourOffset, night);
+	harbourLights(geometry, elapsedSeconds, harbourOffset, night, raid);
 	water(geometry, elapsedSeconds, distance, night);
+	if (raid.phase == CarrierPhase::Approach || raid.phase == CarrierPhase::Battle)
+	{
+		drawBatch(target, geometry);
+		geometry.clear();
+		drawCarrierSky(target, combat);
+	}
 	for (const auto& enemy : combat.enemies())
 		if (enemy.flight == FlightPath::Pursuit || enemy.flight == FlightPath::Breakaway)
 			hunterSignal(geometry, enemy);
@@ -1346,11 +1421,13 @@ void BattleRenderer::drawEnemies(sf::RenderTarget& target, const Combat& combat)
 	textured.clear();
 	foreground.clear();
 	const float night = nightfall(combat.elapsed());
+	drawCarrier(target, combat, carrierHull);
 	if (const auto& ship = combat.battleship())
 		drawBattleship(target, foreground, battleshipHull, battleshipFlashMask, combat, *ship, night);
 	for (const Enemy& enemy : combat.enemies())
 	{
-		if (enemy.kind == EnemyKind::BattleshipTurret)
+		if (enemy.kind == EnemyKind::BattleshipTurret || enemy.kind == EnemyKind::CarrierPart ||
+		    enemy.kind == EnemyKind::CarrierHull)
 			continue;
 		if (enemy.kind == EnemyKind::PatrolBoat)
 		{

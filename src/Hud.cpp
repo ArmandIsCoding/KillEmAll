@@ -88,6 +88,38 @@ void lifeRecoveryNotice(sf::RenderTarget& target, const sf::Font& font, float fl
     label(target, font, "+1 VIDA", 26, 71, 32, accent);
 }
 
+void carrierMeter(sf::RenderTarget& target, const sf::Font& font, const Combat& combat)
+{
+    const auto& raid = combat.carrierRaid();
+    rect(target, 265, 63, 430, 42, {15, 27, 34, 242});
+    rect(target, 265, 63, 3, 42, cyan);
+    label(target, font, "PORTAAVIONES", 276, 69, 10, ivory);
+    rect(target, 398, 68, 242, 12, seam);
+    rect(target, 400, 70, 238, 8, ink);
+    const float life = static_cast<float>(raid.health) / CarrierRaid::maxHealth;
+    const float fill = std::ceil(238.f * life);
+    rect(target, 400, 70, fill, 8, {190, 82, 68});
+    rect(target, 400, 70, fill, 2, {255, 186, 130});
+    const auto percent = std::to_string(static_cast<int>(std::ceil(100.f * life))) + "%";
+    label(target, font, percent, 686.f - 10.f * static_cast<float>(percent.size()), 69, 10, ivory);
+
+    struct Mount { CarrierPart part; const char* name; };
+    constexpr std::array<Mount, 3> mounts{{
+        {CarrierPart::Catapult, "CATAPULTA"}, {CarrierPart::ForwardLight, "FOCO PROA"},
+        {CarrierPart::AftLight, "FOCO POPA"}
+    }};
+    for (std::size_t i = 0; i < mounts.size(); ++i)
+    {
+        const float x = 277.f + 139.f * static_cast<float>(i);
+        const auto* part = combat.carrierPart(mounts[i].part);
+        label(target, font, mounts[i].name, x, 88, 8, part ? ivory : dim);
+        rect(target, x + 76, 89, 45, 5, seam);
+        if (part)
+            rect(target, x + 76, 89, std::ceil(45.f * part->health / part->maxHealth()), 5,
+                 part->hitFlash > 0.f ? sf::Color::White : gold);
+    }
+}
+
 void comboNotice(sf::RenderTarget& target, const sf::Font& font, Combo combo, float top)
 {
     struct Tier { unsigned size; sf::Color color; };
@@ -171,10 +203,12 @@ void panel(sf::RenderTarget& target, float x, float y, float w, float h, sf::Col
     rect(target, x, y, w, 4, accent);
 }
 
-void pausePanel(sf::RenderTarget& target, const sf::Font& font, bool muted)
+void pausePanel(sf::RenderTarget& target, const sf::Font& font, bool muted, WeaponMode weapon)
 {
     panel(target, 211, 145, 538, 357, cyan);
     label(target, font, "PAUSA", 243, 173, 32, ivory);
+    if (weapon == WeaponMode::Arsenal)
+        label(target, font, U"ATAJ\u00c1 UN TIRO CON CADA PUNTA PARA LANZAR LA TRENZA.", 243, 215, 9, cyan);
     rect(target, 243, 229, 474, 2, seam);
 
     const auto row = [&](float y, const sf::String& key, const sf::String& action) {
@@ -231,9 +265,14 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     label(target, font, score, 16, 25, std::min(21u, 144u / static_cast<unsigned>(score.size())), gold);
     const bool flying = !paused && !combat.gameOver();
     const bool bossVisible = combat.battleship().has_value() && !combat.gameOver();
-    if (bossVisible)
+    const auto raidPhase = combat.carrierRaid().phase;
+    const bool carrierVisible = !combat.gameOver() &&
+        (raidPhase == CarrierPhase::Battle || raidPhase == CarrierPhase::Sinking);
+    if (carrierVisible)
+        carrierMeter(target, font, combat);
+    else if (bossVisible)
         bossMeter(target, font, combat);
-    const float noticeTop = bossVisible ? 91.f : 60.f;
+    const float noticeTop = carrierVisible ? 108.f : bossVisible ? 91.f : 60.f;
     const float lifeFlash = flying ? combat.lifeRecoveryFlash() : 0.f;
     if (lifeFlash > 0.f)
         lifeRecoveryNotice(target, font, lifeFlash);
@@ -347,7 +386,7 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     if (combat.gameOver())
         endPanel(target, font, combat.score(), bestScore, combat.bestCombo());
     else if (paused)
-        pausePanel(target, font, muted);
+        pausePanel(target, font, muted, mode);
     else if (combat.elapsed() < 2.8f)
     {
         rect(target, 22, 524, 410, 58, {14, 27, 33, 233});

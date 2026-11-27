@@ -2,10 +2,28 @@
 #include "Combat.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace
 {
 constexpr float secondDronePitch = 1.22f;
+
+void mixLoop(sf::Sound& voice, float volume, float clock)
+{
+    if (volume <= 0.f)
+    {
+        if (voice.getStatus() != sf::Sound::Status::Stopped)
+            voice.stop();
+        return;
+    }
+    voice.setVolume(volume);
+    if (voice.getStatus() != sf::Sound::Status::Playing)
+    {
+        const float duration = voice.getBuffer().getDuration().asSeconds();
+        voice.setPlayingOffset(sf::seconds(std::fmod(clock, duration)));
+        voice.play();
+    }
+}
 }
 
 GameAudio::GameAudio(const std::filesystem::path& folder)
@@ -18,13 +36,22 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
       shipHornData(folder / "ship-horn.wav"), lifeRecoveredData(folder / "life-recovered.wav"),
       lifeWarningData(folder / "life-warning.wav"),
       arsenalData(folder / "arsenal.wav"), droneData(folder / "drone-shot.wav"), hullImpactData(folder / "hull-impact.wav"),
+      drumData(folder / "combo-drums.wav"), raidPulseData(folder / "raid-pulse.wav"),
+      victoryData(folder / "carrier-victory.wav"), braidData(folder / "braid-release.wav"),
       music(musicData), weapon(cannonData), blast(blastData), wave(blastData),
       impact(impactData), upgrade(powerData), comboNote(comboData), fanfare(fanfareFiveData),
       precisionReady(precisionReadyData), guidanceReady(guidanceReadyData), shipHorn(shipHornData),
       lifeRecovered(lifeRecoveredData), lifeWarning(lifeWarningData),
-      droneShots{sf::Sound(droneData), sf::Sound(droneData)}, hullImpact(hullImpactData)
+      droneShots{sf::Sound(droneData), sf::Sound(droneData)}, hullImpact(hullImpactData),
+      drums(drumData), raidPulse(raidPulseData), victory(victoryData), braid(braidData)
 {
     music.setLooping(true);
+    drums.setLooping(true);
+    raidPulse.setLooping(true);
+    weapon.setSpatializationEnabled(false);
+    victory.setSpatializationEnabled(false);
+    victory.setVolume(65.f);
+    braid.setVolume(42.f);
     music.setVolume(24.f);
     weapon.setVolume(13.f);
     blast.setVolume(45.f);
@@ -58,6 +85,10 @@ void GameAudio::restart()
     lastGuidanceRefill = 0;
     lastLifeRecovery = 0;
     lastLifeWarning = 0;
+    lastBraid_ = 0;
+    drumVolume_ = 0.f;
+    lastWorldTime_ = 0.f;
+    wasSeaOnly_ = false;
     bossPresent = false;
     setPlaying(true);
 }
@@ -65,20 +96,23 @@ void GameAudio::restart()
 void GameAudio::setPlaying(bool playing)
 {
     running = playing;
-    if (running && !silent)
-        music.play();
-    else
+    if (!running || silent)
     {
         stopBattleSounds();
         comboNote.stop();
         pendingComboNotes.clear();
         fanfare.stop();
+        pendingFanfares.clear();
     }
 }
 
 void GameAudio::stopBattleSounds()
 {
     music.pause();
+    drums.stop();
+    raidPulse.stop();
+    victory.pause();
+    braid.stop();
     weapon.stop();
     for (auto& shot : droneShots)
         shot.stop();
@@ -108,7 +142,11 @@ void GameAudio::setTimeScale(float scale)
         return;
     timeScale_ = scale;
     music.setPitch(scale);
-    weapon.setPitch(scale);
+    weapon.setPitch(weaponPitch_ * scale);
+    drums.setPitch(scale);
+    raidPulse.setPitch(scale);
+    victory.setPitch(scale);
+    braid.setPitch(scale);
     droneShots[0].setPitch(scale);
     droneShots[1].setPitch(secondDronePitch * scale);
     hullImpact.setPitch(scale);
@@ -127,7 +165,7 @@ void GameAudio::setTimeScale(float scale)
         voice.setPitch(scale);
 }
 
-void GameAudio::playWeapon(WeaponMode mode)
+void GameAudio::playWeapon(WeaponMode mode, unsigned leadEmitter)
 {
     const sf::SoundBuffer* buffer = &cannonData;
     if (mode == WeaponMode::Missiles)
@@ -137,11 +175,48 @@ void GameAudio::playWeapon(WeaponMode mode)
     else if (mode == WeaponMode::Arsenal)
         buffer = &arsenalData;
     if (&weapon.getBuffer() != buffer)
-    {
         weapon.setBuffer(*buffer);
-        weapon.setPitch(timeScale_);
-    }
+    // One accent per firing cycle leaves room for the drones and combo notes.
+    weaponPitch_ = mode == WeaponMode::Arsenal && leadEmitter == 1 ? 1.5f : 1.f;
+    weapon.setPitch(weaponPitch_ * timeScale_);
+    weapon.setPan(mode == WeaponMode::Arsenal ? (leadEmitter == 0 ? -0.78f : 0.78f) : 0.f);
+    weapon.setVolume(mode == WeaponMode::Arsenal ? 26.f : 13.f);
     weapon.play();
+}
+
+void GameAudio::updateMusic(const Combat& combat, float worldDt)
+{
+    const auto& raid = combat.carrierRaid();
+    float patrol = 1.f;
+    if (raid.phase == CarrierPhase::Approach)
+        patrol = std::clamp(1.f - raid.age / 1.2f, 0.f, 1.f);
+    else if (raid.phase == CarrierPhase::Battle || raid.phase == CarrierPhase::Aftermath)
+        patrol = std::clamp(raid.age / 0.9f, 0.f, 1.f);
+    else if (raid.phase == CarrierPhase::Sinking)
+        patrol = 0.f;
+
+    const float tension = raid.phase == CarrierPhase::Approach || raid.phase == CarrierPhase::Battle
+        ? 1.f - patrol : 0.f;
+    mixLoop(music, 24.f * patrol, combat.elapsed());
+    mixLoop(raidPulse, 52.f * tension, raid.age);
+
+    const int kills = combat.combo().kills;
+    const float target = kills >= 2 ? std::min(45.f, 25.f + 2.f * kills) : 0.f;
+    drumVolume_ += std::clamp(target - drumVolume_, -45.f * worldDt, 180.f * worldDt);
+    // Enter on the current sixteenth of coast-patrol's 138 BPM groove.
+    mixLoop(drums, drumVolume_ * patrol, music.getPlayingOffset().asSeconds());
+
+    // The stereo victory cue begins with exactly one second of surf before the brass enters.
+    if (raid.phase == CarrierPhase::Sinking && raid.age < victoryData.getDuration().asSeconds())
+    {
+        const bool playing = victory.getStatus() == sf::Sound::Status::Playing;
+        if (!playing || std::abs(victory.getPlayingOffset().asSeconds() - raid.age) > 0.12f)
+            victory.setPlayingOffset(sf::seconds(raid.age));
+        if (!playing)
+            victory.play();
+    }
+    else if (victory.getStatus() != sf::Sound::Status::Stopped)
+        victory.stop();
 }
 
 void GameAudio::playGunshipBlast()
@@ -159,15 +234,35 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
 {
     setTimeScale(combat.timeScale());
     const bool audibleFrame = running && !silent;
+    const float worldDt = std::max(0.f, combat.elapsed() - lastWorldTime_);
+    lastWorldTime_ = combat.elapsed();
+    const auto& raid = combat.carrierRaid();
+    const bool seaOnly = raid.phase == CarrierPhase::Sinking && raid.age < 1.f;
+    if (audibleFrame && seaOnly && !wasSeaOnly_)
+    {
+        stopBattleSounds();
+        comboNote.stop();
+        fanfare.stop();
+        pendingComboNotes.clear();
+    }
+    wasSeaOnly_ = seaOnly;
     if (running && combat.gameOver())
     {
         running = false;
         stopBattleSounds();
         fanfare.stop();
-        if (!silent)
+        if (!silent && raid.phase != CarrierPhase::Sinking)
             impact.play();
     }
-    if (audibleFrame)
+    // A last-life collision on the fatal pass still gets the sinking ship's coda.
+    if (!silent && (running || (combat.gameOver() && raid.phase == CarrierPhase::Sinking)))
+        updateMusic(combat, worldDt);
+    if (running && !silent && combat.lifeRecoveries() > lastLifeRecovery)
+    {
+        lifeWarning.stop();
+        pendingLifeNotices += combat.lifeRecoveries() - lastLifeRecovery;
+    }
+    if (audibleFrame && !seaOnly)
     {
         if (running && combat.battleship() && !bossPresent)
             shipHorn.play();
@@ -189,18 +284,15 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
                 pendingComboNotes.push_back(effect.comboKills);
         }
         if (running && combat.volleysFired() != lastVolley)
-            playWeapon(combat.weaponMode());
+            playWeapon(combat.weaponMode(), combat.arsenalLeadEmitter());
+        if (running && combat.braidsFired() > lastBraid_)
+            braid.play();
         if (running && weaponUpgraded)
             upgrade.play();
         if (running && combat.precisionRefills() > lastPrecisionRefill)
             precisionReady.play();
         if (running && combat.guidanceRefills() > lastGuidanceRefill)
             guidanceReady.play();
-        if (running && combat.lifeRecoveries() > lastLifeRecovery)
-        {
-            lifeWarning.stop();
-            pendingLifeNotices += combat.lifeRecoveries() - lastLifeRecovery;
-        }
         if (running && combat.lifeRecoveryWarnings() > lastLifeWarning && combat.oneKillFromLife())
             lifeWarning.play();
         if (pendingLifeNotices > 0 && lifeRecovered.getStatus() == sf::Sound::Status::Stopped)
@@ -210,7 +302,7 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
         }
     }
     // Separate the attacks so even kills in one frame form an audible run of notes.
-    if (!pendingComboNotes.empty() && comboNote.getStatus() == sf::Sound::Status::Stopped)
+    if (!seaOnly && !pendingComboNotes.empty() && comboNote.getStatus() == sf::Sound::Status::Stopped)
     {
         const float steps = static_cast<float>(pendingComboNotes.front() - 1);
         pendingComboNotes.pop_front();
@@ -220,11 +312,17 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
     }
     const unsigned milestone = combat.comboMilestoneSerial();
     if (running && !silent && milestone && milestone != lastMilestone)
+        pendingFanfares.push_back(combat.comboMilestone());
+    // Let the carrier's fanfare finish before announcing combo milestones won on the final pass.
+    if (running && !silent && raid.phase != CarrierPhase::Sinking &&
+        !pendingFanfares.empty() && fanfare.getStatus() == sf::Sound::Status::Stopped)
     {
-        fanfare.setBuffer(combat.comboMilestone() == 5 ? fanfareFiveData : fanfareTenData);
+        fanfare.setBuffer(pendingFanfares.front() == 5 ? fanfareFiveData : fanfareTenData);
+        pendingFanfares.pop_front();
         fanfare.play();
     }
     lastMilestone = milestone;
+    lastBraid_ = combat.braidsFired();
     bossPresent = combat.battleship().has_value();
     lastPrecisionRefill = combat.precisionRefills();
     lastGuidanceRefill = combat.guidanceRefills();
@@ -235,7 +333,7 @@ void GameAudio::update(const Combat& combat, bool weaponUpgraded)
     for (std::size_t i = 0; i < droneShots.size(); ++i)
     {
         const unsigned fired = i < drones.size() ? drones[i].shotsFired : 0;
-        if (running && !silent && fired > lastDroneShots[i])
+        if (running && !silent && !seaOnly && fired > lastDroneShots[i])
             droneShots[i].play();
         lastDroneShots[i] = fired;
     }

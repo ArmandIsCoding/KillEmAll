@@ -34,6 +34,10 @@ Con el láser equipado, el salto al Arsenal tarda entre **22 y 55 segundos de vu
 
 Los dos osciladores se mueven en sentidos opuestos. Sus dardos verdes y lima se cruzan y se van separando con la distancia. El arco turquesa bloquea las balas y los orbes enemigos que lo tocan y da un destello justo donde pegan. Los tiros que entran por los flancos o por la cola todavía pueden alcanzarte.
 
+Con el Arsenal podés devolver el golpe con una **descarga trenzada**. Atajá un disparo cerca de una punta del escudo. Mientras esa punta siga encendida, mové el avión para atrapar otro tiro con la punta opuesta. Tenés **1,8 segundos de vuelo** y podés empezar por cualquiera de las dos. Los osciladores juntan sus ondas delante de la nariz y lanzan una trenza que inflige **16 puntos de daño** al primer blanco. Con **Shift** tenés más tiempo para acomodar el segundo bloqueo.
+
+![En una partida con Arsenal R10, el avión cambia de altura para bloquear con la segunda punta y los osciladores sueltan la trenza.](docs/media/trenza.gif)
+
 Debajo de **ARSENAL** podés ver cuánto falta para el segundo robot. Con el **tercer potenciador** aparece un compañero verde que orbita del lado opuesto al celeste. Cada uno apunta a un enemigo distinto. Si queda un solo blanco, el celeste sigue disparando y el verde espera al próximo. Con las cuatro mejoras, el intervalo base entre descargas de cada robot baja de **0,42 a 0,20 segundos**. El rango por bajas acorta aún más la recarga.
 
 ![Los osciladores dibujan dos ondas cruzadas delante del avión, el escudo intercepta una bala en su borde inferior y los dos robots disparan a sus blancos.](docs/media/arsenal.gif)
@@ -67,7 +71,7 @@ En R10 el tiempo entre descargas es un **15 % menor** que en R0 con los mismos p
 
 Podés usar **precisión y guiado juntos**. La cámara lenta alcanza el vuelo, el desplazamiento de la costa, los enemigos, las balas de ambos bandos, la cadencia del cañón y las explosiones. También baja el ritmo de la música, los sonidos de combate y las fanfarrias.
 
-Con el **guiado**, los tiros del cañón, los misiles y la salva del arsenal salen con su trayectoria habitual y enseguida doblan. Los que ya están en vuelo también buscan el blanco. El láser apunta directamente a la mira en el instante de cada pulso. La prioridad es **torreta del acorazado, blindado, lancha, interceptor y explorador**. Si derribás al blanco, la mira salta al siguiente. Al soltar la barra, los proyectiles siguen desde el rumbo que llevaban y el próximo pulso vuelve a salir hacia adelante.
+Con el **guiado**, los tiros del cañón, los misiles y la salva del arsenal salen con su trayectoria habitual y enseguida doblan. Los que ya están en vuelo también buscan el blanco. El láser apunta directamente a la mira en el instante de cada pulso. Durante el asalto nocturno el guiado prioriza la catapulta y los reflectores, y después el casco del portaaviones. En el resto de la partida sigue el orden **torreta del acorazado, blindado, lancha, interceptor y explorador**. Si derribás al blanco, la mira salta al siguiente. Al soltar la barra, los proyectiles siguen desde el rumbo que llevaban y el próximo pulso vuelve a salir hacia adelante.
 
 La mira es **verde** si al blanco le queda más del 60 % de vida. Pasa a **ámbar** al llegar al 60 % o menos. Cuando le queda un cuarto de vida o menos, o está a un solo punto de caer, la mira **parpadea en rojo**. Al cambiar de blanco, toma de inmediato el color que corresponde a la vida del nuevo enemigo.
 
@@ -105,7 +109,23 @@ A los **42 segundos de vuelo**, una bocina anuncia al primer jefe. Entra por el 
 | Centro, sobre el puente | El antiaéreo arranca con cinco disparos y ensancha su abanico con el tiempo. Podés pasar por los huecos o desactivarlo primero apuntando a la torreta más alta. |
 | Popa, a la derecha | La batería rápida hace tres descargas seguidas hacia el punto que fijó antes de la ráfaga. En encuentros avanzados abre tres tiros por descarga. |
 
-Podés apuntar al casco para hundir el barco o a una torreta para desactivar ese ataque. Cada torreta tiene **40 puntos de vida**, vale **250 puntos** y al recibir daño también baja la integridad del barco. Al llegar a cero, el acorazado se hunde, libera una onda expansiva y suma **1500 puntos**. Si sobrevive, a los 34 segundos de encuentro empieza a retirarse hacia la izquierda. El siguiente llega **55 segundos después** de que el anterior desaparezca.
+Podés apuntar al casco para hundir el barco o a una torreta para desactivar ese ataque. Cada torreta tiene **40 puntos de vida**, vale **250 puntos** y al recibir daño también baja la integridad del barco. Al llegar a cero, el acorazado se hunde, libera una onda expansiva y suma **1500 puntos**. Si sobrevive, a los 34 segundos de encuentro empieza a retirarse hacia la izquierda. Entre acorazados pasan **55 segundos**. El asalto del portaaviones tiene prioridad durante la primera noche.
+
+### El asalto de la primera noche
+
+A los **2:20 de vuelo**, las luces de las grúas se apagan de izquierda a derecha y sus reflejos desaparecen del agua. La música baja hasta que se oye un pulso grave. Dos reflectores barren las nubes y dejan ver la silueta del **portaaviones**. Tenés ocho segundos para tomar posición antes de que abra fuego.
+
+![Se apagan las luces del puerto, los reflectores descubren al portaaviones y el casco se hunde tras el combate.](docs/media/asalto-nocturno.gif)
+
+La barra del jefe muestra la integridad del casco y la de sus tres sistemas. Podés elegir a qué altura entrar y qué destruir primero.
+
+| Blanco | Qué cambia al destruirlo |
+| --- | --- |
+| Catapulta de proa · 60 de vida | Cancela los despegues pendientes y las próximas escuadrillas. Los cazas que ya despegaron siguen peleando. |
+| Reflectores de proa y popa · 40 cada uno | Cada foco que apagás reduce los proyectiles de la andanada y hace que los cañones fijen tu posición más temprano. Cuando aparece la cruz de puntería, podés salirte de esa línea. |
+| Casco · 300 de vida | Hundís el portaaviones y ganás 2500 puntos. Cada sistema que hayas destruido antes te da otros 350. |
+
+Los osciladores del Arsenal se contestan en estéreo y las bajas en cadena suman percusión a la música del puerto. Cuando el portaaviones se hunde, se escucha un segundo de oleaje antes de que entre la fanfarria y vuelvan las luces del muelle. [Escuchá el oleaje y la fanfarria](assets/arcade/audio/carrier-victory.wav).
 
 ### Explosiones en cadena
 

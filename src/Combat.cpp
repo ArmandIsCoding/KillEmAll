@@ -1,4 +1,5 @@
 #include "Combat.hpp"
+#include "HullGeometry.hpp"
 
 #include <algorithm>
 #include <array>
@@ -20,6 +21,8 @@ constexpr float fullLaserRate = 130.f;
 constexpr float fullArsenalRate = 180.f;
 constexpr std::array<float, Combat::maxDroneUpgrades + 1> droneReloads{0.42f, 0.36f, 0.30f, 0.24f, 0.20f};
 constexpr float emitterTravel = 34.f;
+constexpr float shieldTipWindow = 1.8f;
+constexpr float braidWindupSeconds = 0.18f;
 constexpr float burstSpacing = 0.105f;
 constexpr float singleReload = 0.23f;
 constexpr std::array<unsigned, Combat::maxWeaponRank> weaponRankKills{6, 18, 36, 64, 100, 150, 220, 320, 460, 660};
@@ -104,6 +107,8 @@ constexpr EnemyStats stats(EnemyKind kind)
         case EnemyKind::Gunship: return {27.f, 11, 68.f, 32.f, 0.9f, 2.2f, 500};
         case EnemyKind::PatrolBoat: return {22.f, 5, 86.f, 1.8f, 3.f, 2.6f, 300};
         case EnemyKind::BattleshipTurret: return {15.f, Battleship::turretHealth, 0.f, 0.f, 0.f, 0.f, 250};
+        case EnemyKind::CarrierPart: return {12.f, 40, 0.f, 0.f, 0.f, 0.f, 350};
+        case EnemyKind::CarrierHull: return {16.f, CarrierRaid::maxHealth, 0.f, 0.f, 0.f, 0.f, 2500};
     }
     return {};
 }
@@ -111,6 +116,14 @@ constexpr EnemyStats stats(EnemyKind kind)
 void moveAircraft(Enemy& enemy, const EnemyStats& type, float dt, sf::Vector2f playerPosition)
 {
     enemy.position.x += enemy.velocity.x * dt;
+    if (enemy.flight == FlightPath::DeckLaunch)
+    {
+        enemy.velocity.y = -80.f - 75.f * enemy.age;
+        enemy.position.y += enemy.velocity.y * dt;
+        if (enemy.age >= 1.35f)
+            enemy.flight = FlightPath::Pursuit;
+        return;
+    }
     if (enemy.flight == FlightPath::Weave)
     {
         const float phase = enemy.phase + type.frequency * enemy.age;
@@ -160,29 +173,15 @@ bool isVisibleTarget(const Enemy& enemy)
            enemy.position.y >= 0.f && enemy.position.y <= height;
 }
 
-struct HullSection
-{
-    float left, top, right, bottom;
-};
+using hull::clipRayAxis;
 
 // Solid decks, bridge, funnel and mast, relative to the waterline of the hull sprite.
-constexpr std::array<HullSection, 12> hullSections{{
+constexpr std::array<hull::Plate, 12> hullSections{{
     {-127.f, -8.f, 124.f, 2.f}, {-119.f, 2.f, 124.f, 10.f}, {-108.f, 10.f, 119.f, 16.f},
     {-95.f, 16.f, 107.f, 20.f}, {-62.f, -21.f, 112.f, -8.f}, {-39.f, -32.f, 100.f, -21.f},
     {-24.f, -58.f, 20.f, -32.f}, {30.f, -54.f, 46.f, -32.f}, {49.f, -43.f, 61.f, -32.f},
     {53.f, -83.f, 56.f, -43.f}, {44.f, -74.f, 64.f, -71.f}, {42.f, -65.f, 67.f, -62.f}
 }};
-
-bool clipRayAxis(float origin, float direction, float low, float high, float& enter, float& leave)
-{
-    if (direction == 0.f)
-        return origin >= low && origin <= high;
-    const float a = (low - origin) / direction;
-    const float b = (high - origin) / direction;
-    enter = std::max(enter, std::min(a, b));
-    leave = std::min(leave, std::max(a, b));
-    return enter <= leave;
-}
 
 std::optional<float> rayCircleHit(sf::Vector2f origin, sf::Vector2f direction, float reach,
                                   sf::Vector2f center, float radius)
@@ -308,6 +307,8 @@ void steerShot(Shot& shot, const Enemy& target, float dt)
 
 int Enemy::maxHealth() const
 {
+    if (kind == EnemyKind::CarrierPart)
+        return CarrierRaid::partHealth(carrierPart);
     return stats(kind).health;
 }
 
@@ -318,21 +319,7 @@ sf::Vector2f Battleship::mountPosition(TurretKind kind) const
 
 sf::Vector2f Battleship::nearestHullPoint(sf::Vector2f point) const
 {
-    const auto local = point - position;
-    sf::Vector2f nearest{};
-    float best = std::numeric_limits<float>::infinity();
-    for (const auto& plate : hullSections)
-    {
-        const sf::Vector2f candidate{std::clamp(local.x, plate.left, plate.right),
-                                     std::clamp(local.y, plate.top, plate.bottom)};
-        const float distance = (local - candidate).lengthSquared();
-        if (distance < best)
-        {
-            nearest = candidate;
-            best = distance;
-        }
-    }
-    return position + nearest;
+    return position + hull::nearestPoint(hullSections, point - position);
 }
 
 bool Battleship::touchesHull(sf::Vector2f point, float radius) const
@@ -344,16 +331,7 @@ std::optional<float> Battleship::hullRayHit(sf::Vector2f origin, sf::Vector2f di
 {
     if (sinking)
         return {};
-    const auto local = origin - position;
-    std::optional<float> nearest;
-    for (const auto& plate : hullSections)
-    {
-        float enter = 0.f, leave = nearest.value_or(reach);
-        if (clipRayAxis(local.x, direction.x, plate.left - radius, plate.right + radius, enter, leave) &&
-            clipRayAxis(local.y, direction.y, plate.top - radius, plate.bottom + radius, enter, leave))
-            nearest = enter;
-    }
-    return nearest;
+    return hull::rayHit(hullSections, origin - position, direction, reach, radius);
 }
 
 sf::Vector2f Enemy::turretPivot() const
@@ -378,6 +356,13 @@ sf::Vector2f Enemy::turretDirection() const
 {
     const auto offset = turretTarget - turretPivot();
     return offset.lengthSquared() > 0.f ? offset.normalized() : sf::Vector2f{0.f, -1.f};
+}
+
+int Shot::directDamage() const
+{
+    if (kind == ShotKind::Braid)
+        return 16;
+    return kind == ShotKind::Player ? 1 : 2;
 }
 
 Shot::TrailSample Shot::trailSample(float lookback) const
@@ -440,7 +425,10 @@ const Enemy* Combat::guidanceTarget(const Enemy* excluded) const
         if (&enemy == excluded || !isVisibleTarget(enemy))
             continue;
         // Equal classes retain formation order instead of switching on every hit.
-        if (!best || enemy.maxHealth() > best->maxHealth())
+        const auto priority = [](const Enemy& target) {
+            return target.kind == EnemyKind::CarrierPart ? CarrierRaid::maxHealth + 1 : target.maxHealth();
+        };
+        if (!best || priority(enemy) > priority(*best))
             best = &enemy;
     }
     return best;
@@ -490,6 +478,49 @@ sf::Vector2f Combat::arsenalShieldPoint(sf::Vector2f muzzle, float normalizedY)
                                  arsenalShieldHeight * y};
 }
 
+float Combat::shieldTipGlow(int side) const
+{
+    if (braidTimeLeft_ > 0.f)
+        return 1.f;
+    return side == chargedTip_ ? std::min(1.f, tipTimeLeft_ / 0.55f) : 0.f;
+}
+
+float Combat::braidWindup() const
+{
+    return braidTimeLeft_ / braidWindupSeconds;
+}
+
+void Combat::catchShieldShot(float normalizedY)
+{
+    if (std::abs(normalizedY) < shieldTipStart || braidTimeLeft_ > 0.f || gameOver())
+        return;
+    const int side = normalizedY < 0.f ? -1 : 1;
+    if (tipTimeLeft_ <= 0.f)
+    {
+        chargedTip_ = side;
+        tipTimeLeft_ = shieldTipWindow;
+    }
+    else if (side != chargedTip_)
+    {
+        chargedTip_ = 0;
+        tipTimeLeft_ = 0.f;
+        braidTimeLeft_ = braidWindupSeconds;
+    }
+}
+
+void Combat::updateBraid(float dt)
+{
+    tipTimeLeft_ = std::max(0.f, tipTimeLeft_ - dt);
+    if (braidTimeLeft_ <= 0.f)
+        return;
+    braidTimeLeft_ = std::max(0.f, braidTimeLeft_ - dt);
+    if (braidTimeLeft_ == 0.f)
+    {
+        shots_.push_back({ShotKind::Braid, braidFocus(), {805.f, 0.f}, 9.f, 0.f, 0.f});
+        ++braidsFired_;
+    }
+}
+
 sf::Vector2f Combat::screenShakeOffset() const
 {
     constexpr float duration = 0.36f;
@@ -537,6 +568,8 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
             precision_.advance(realSlice, elapsed_, 4.f, 8.f);
             guidance_.advance(realSlice, elapsed_, 5.f, 10.f);
         }
+        else if (carrierRaid_.phase == CarrierPhase::Sinking || carrierRaid_.phase == CarrierPhase::Aftermath)
+            updateCarrier(slice, playerPosition);
         else if (battleship_ && battleship_->sinking)
             updateBattleship(slice);
         explosions_.erase(std::remove_if(explosions_.begin(), explosions_.end(), [this](const Explosion& effect) {
@@ -550,7 +583,8 @@ void Combat::update(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOf
             }
             return true;
         }), explosions_.end());
-        if (gameOver() && explosions_.empty() && fadingTrails_.empty() && !(battleship_ && battleship_->sinking))
+        if (gameOver() && explosions_.empty() && fadingTrails_.empty() && !(battleship_ && battleship_->sinking) &&
+            carrierRaid_.phase != CarrierPhase::Sinking && carrierRaid_.phase != CarrierPhase::Aftermath)
             break;
 
         dt -= realSlice;
@@ -581,15 +615,19 @@ void Combat::step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffs
     const float opening = std::min(elapsed_, openingDuration);
     distance_ += dt * (105.f + 0.5f * opening + 220.f * pressure);
     grace_ = std::max(0.f, grace_ - dt);
-    updateBattleship(dt);
+    updateCarrier(dt, playerPosition);
+    if (!carrierRaid_.occupiesWater())
+        updateBattleship(dt);
     // Keep a few aerial escorts during the encounter and give the battleship the water lane.
-    nextFormation_ -= battleship_ ? 0.35f * dt : dt;
+    const float aerialRate = carrierRaid_.phase == CarrierPhase::Approach ? 0.f :
+                             carrierRaid_.occupiesWater() ? 0.18f : battleship_ ? 0.35f : 1.f;
+    nextFormation_ -= aerialRate * dt;
     if (nextFormation_ <= 0.f)
     {
         spawnFormation();
         nextFormation_ += (2.95f - 0.022f * opening) / (1.f + 2.65f * pressure);
     }
-    if (!battleship_)
+    if (!battleship_ && !carrierRaid_.occupiesWater())
     {
         nextBoat_ -= dt;
         if (nextBoat_ <= 0.f)
@@ -605,6 +643,8 @@ void Combat::step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffs
     arsenalMuzzle_ = playerPosition + muzzleOffset;
     arsenalShieldFlash_ = std::max(0.f, arsenalShieldFlash_ - dt / 0.18f);
     updateWeapon(dt, arsenalMuzzle_);
+    if (weaponMode_ == WeaponMode::Arsenal)
+        updateBraid(dt);
     updateShots(dt);
     collide(playerPosition, hadShield ? previousMuzzle : arsenalMuzzle_, dt);
     if (weaponMode_ == WeaponMode::Arsenal && !gameOver())
@@ -698,6 +738,13 @@ void Combat::updateEnemies(float dt, sf::Vector2f playerPosition)
     {
         enemy.age += dt;
         enemy.hitFlash = std::max(0.f, enemy.hitFlash - dt);
+        if (enemy.kind == EnemyKind::CarrierPart || enemy.kind == EnemyKind::CarrierHull)
+        {
+            const auto mount = carrierRaid_.mount(enemy.carrierPart);
+            enemy.velocity = (mount - enemy.position) / dt;
+            enemy.position = mount;
+            continue;
+        }
         if (enemy.kind == EnemyKind::BattleshipTurret)
         {
             updateBossTurret(enemy, dt, playerPosition);
@@ -763,6 +810,8 @@ void Combat::fireEnemy(Enemy& enemy, sf::Vector2f playerPosition)
                          shellSpeed, ShotKind::EnemyOrb, 5.f);
             break;
         }
+        case EnemyKind::CarrierPart:
+        case EnemyKind::CarrierHull:
         case EnemyKind::BattleshipTurret:
             return; // The deck batteries have their own aim and burst timers.
     }
@@ -802,6 +851,9 @@ void Combat::updateBattleship(float dt)
 {
     if (!battleship_)
     {
+        // Reserve the water for the first-night arrival, even if the first battleship fell early.
+        if (carrierRaid_.phase == CarrierPhase::Waiting && elapsed_ >= CarrierRaid::arrival - 49.f)
+            return;
         nextBoss_ -= dt;
         if (nextBoss_ > 0.f)
             return;
@@ -1088,7 +1140,11 @@ void Combat::fireLaser(sf::Vector2f muzzle)
 
     laserPulses_.clear();
     std::optional<sf::Vector2f> hullHit;
-    std::array<std::optional<sf::Vector2f>, 3> turretHits{};
+    std::array<std::optional<sf::Vector2f>, 7> navalHits{};
+    const auto navalIndex = [](const Enemy& enemy) {
+        return enemy.kind == EnemyKind::BattleshipTurret ? static_cast<std::size_t>(enemy.turretKind) :
+                                                         3 + static_cast<std::size_t>(enemy.carrierPart);
+    };
     const auto emitRay = [&](sf::Vector2f direction)
     {
         float reach = width + height;
@@ -1105,9 +1161,13 @@ void Combat::fireLaser(sf::Vector2f muzzle)
         const Enemy* turret = nullptr;
         for (const auto& enemy : enemies_)
         {
-            if (enemy.kind != EnemyKind::BattleshipTurret || enemy.health <= 0)
+            if (enemy.health <= 0 || (enemy.kind != EnemyKind::BattleshipTurret &&
+                enemy.kind != EnemyKind::CarrierPart && enemy.kind != EnemyKind::CarrierHull))
                 continue;
-            if (const auto hit = rayCircleHit(muzzle, direction, reach, enemy.position, enemy.radius + LaserPulse::radius))
+            const auto hit = enemy.kind == EnemyKind::CarrierHull
+                ? carrierRaid_.hullRayHit(muzzle, direction, reach, LaserPulse::radius)
+                : rayCircleHit(muzzle, direction, reach, enemy.position, enemy.radius + LaserPulse::radius);
+            if (hit)
             {
                 reach = *hit;
                 turret = &enemy;
@@ -1116,7 +1176,7 @@ void Combat::fireLaser(sf::Vector2f muzzle)
         const auto end = muzzle + direction * reach;
         laserPulses_.push_back({muzzle, end, 0.f, rank});
         if (turret)
-            turretHits[static_cast<std::size_t>(turret->turretKind)] = end;
+            navalHits[navalIndex(*turret)] = end;
         else if (hull)
             hullHit = end;
     };
@@ -1138,9 +1198,10 @@ void Combat::fireLaser(sf::Vector2f muzzle)
     {
         if (enemy.health <= 0)
             continue;
-        if (enemy.kind == EnemyKind::BattleshipTurret)
+        if (enemy.kind == EnemyKind::BattleshipTurret || enemy.kind == EnemyKind::CarrierPart ||
+            enemy.kind == EnemyKind::CarrierHull)
         {
-            if (const auto& hit = turretHits[static_cast<std::size_t>(enemy.turretKind)])
+            if (const auto& hit = navalHits[navalIndex(enemy)])
                 damage(enemy, pulseDamage, 0, *hit);
             continue;
         }
@@ -1322,9 +1383,10 @@ void Combat::updateShots(float dt)
     const auto* secondary = primary && drones_.size() > 1 ? guidanceTarget(primary) : nullptr;
     for (auto& shot : shots_)
     {
+        if (shot.kind == ShotKind::Missile || shot.kind == ShotKind::Braid)
+            recordTrail(shot);
         if (shot.kind == ShotKind::Missile)
         {
-            recordTrail(shot);
             const float speed = shot.velocity.length();
             shot.velocity *= std::min(630.f, speed + 760.f * dt) / speed;
         }
@@ -1395,6 +1457,9 @@ void Combat::hitPlayer(sf::Vector2f position)
     if (invulnerable() || gameOver())
         return;
     --lives_;
+    chargedTip_ = 0;
+    tipTimeLeft_ = 0.f;
+    braidTimeLeft_ = 0.f;
     if (gameOver())
     {
         salvoShotsLeft_ = 0;
@@ -1461,6 +1526,11 @@ void Combat::damage(Enemy& enemy, int amount, unsigned chainId, std::optional<sf
 {
     if (enemy.health <= 0)
         return;
+    if (enemy.kind == EnemyKind::CarrierPart || enemy.kind == EnemyKind::CarrierHull)
+    {
+        damageCarrier(enemy, amount, impact.value_or(enemy.position), chainId);
+        return;
+    }
     enemy.hitFlash = 0.09f;
     const int dealt = std::min(enemy.health, amount);
     enemy.health -= dealt;
@@ -1476,6 +1546,8 @@ void Combat::damage(Enemy& enemy, int amount, unsigned chainId, std::optional<sf
 void Combat::hitEnemies(Shot& shot)
 {
     const auto touches = [&](const Enemy& enemy, float radius) {
+        if (enemy.kind == EnemyKind::CarrierHull)
+            return enemy.health > 0 && (carrierRaid_.nearestHullPoint(shot.position) - shot.position).lengthSquared() <= radius * radius;
         return enemy.health > 0 && enemy.position.x >= 0.f && enemy.position.x <= width &&
                overlaps(shot.position, radius, enemy.position, enemy.radius);
     };
@@ -1490,7 +1562,7 @@ void Combat::hitEnemies(Shot& shot)
     shot.spent = true;
     if (shot.kind != ShotKind::PlayerWave && shot.kind != ShotKind::Missile)
     {
-        const int directDamage = shot.kind == ShotKind::Player ? 1 : 2;
+        const int directDamage = shot.directDamage();
         if (hit != enemies_.end())
             damage(*hit, directDamage, 0, shot.position);
         else if (hullHit)
@@ -1503,7 +1575,11 @@ void Combat::hitEnemies(Shot& shot)
     const int healthBefore = bossHealth();
     for (auto enemy = enemies_.begin(); enemy != enemies_.end(); ++enemy)
         if (touches(*enemy, waveBlastRadius))
-            damage(*enemy, shot.kind == ShotKind::Missile && enemy == hit ? 5 : 2, 0, enemy->position);
+        {
+            const auto impact = enemy->kind == EnemyKind::CarrierHull
+                ? carrierRaid_.nearestHullPoint(shot.position) : enemy->position;
+            damage(*enemy, shot.kind == ShotKind::Missile && enemy == hit ? 5 : 2, 0, impact);
+        }
     if (battleship_ && battleship_->touchesHull(shot.position, waveBlastRadius))
     {
         const int structuralDamage = shot.kind == ShotKind::Missile && hullHit && hit == enemies_.end() ? 5 : 2;
@@ -1537,14 +1613,16 @@ void Combat::sweepGunshipShockwaves()
         const int healthBefore = bossHealth();
         for (auto& enemy : enemies_)
         {
+            const bool carrierHull = enemy.kind == EnemyKind::CarrierHull;
+            const auto point = carrierHull ? carrierRaid_.nearestHullPoint(wave.position) : enemy.position;
             if (enemy.health <= 0 || enemy.position.x < 0.f || enemy.position.x > width ||
-                !touchesFront(enemy.position, enemy.radius))
+                !touchesFront(point, carrierHull ? 0.f : enemy.radius))
                 continue;
             auto& hits = enemy.shockwavesHit;
             if (std::find(hits.begin(), hits.end(), wave.seed) != hits.end())
                 continue;
-            const bool inCore = overlaps(wave.position, coreRadius, enemy.position, enemy.radius);
-            damage(enemy, inCore ? stats(EnemyKind::Gunship).health : 3, wave.chainId);
+            const bool inCore = overlaps(wave.position, coreRadius, point, carrierHull ? 0.f : enemy.radius);
+            damage(enemy, inCore ? stats(EnemyKind::Gunship).health : 3, wave.chainId, point);
             if (enemy.health > 0)
                 hits.push_back(wave.seed);
         }
@@ -1580,6 +1658,7 @@ void Combat::collide(sf::Vector2f playerPosition, sf::Vector2f previousMuzzle, f
                 shot.spent = true;
                 arsenalShieldHitY_ = *hit;
                 arsenalShieldFlash_ = 1.f;
+                catchShieldShot(*hit);
                 continue;
             }
         }
@@ -1593,10 +1672,13 @@ void Combat::collide(sf::Vector2f playerPosition, sf::Vector2f previousMuzzle, f
         hitPlayer(playerPosition);
     for (auto& enemy : enemies_)
     {
-        if (enemy.health > 0 && !invulnerable() &&
-            overlaps(enemy.position, enemy.radius, playerPosition, playerHitRadius))
+        const bool carrierHull = enemy.kind == EnemyKind::CarrierHull;
+        const bool collision = carrierHull
+            ? (carrierRaid_.nearestHullPoint(playerPosition) - playerPosition).lengthSquared() <= playerHitRadius * playerHitRadius
+            : overlaps(enemy.position, enemy.radius, playerPosition, playerHitRadius);
+        if (enemy.health > 0 && !invulnerable() && collision)
         {
-            if (enemy.kind != EnemyKind::BattleshipTurret)
+            if (enemy.kind != EnemyKind::BattleshipTurret && enemy.kind != EnemyKind::CarrierPart && !carrierHull)
             {
                 enemy.health = 0;
                 explodeEnemy(enemy);
@@ -1607,7 +1689,12 @@ void Combat::collide(sf::Vector2f playerPosition, sf::Vector2f previousMuzzle, f
     const bool guidingSalvo = weaponMode_ == WeaponMode::Arsenal && guidanceTarget();
     shots_.erase(std::remove_if(shots_.begin(), shots_.end(), [this, guidingSalvo](const Shot& shot) {
         // At the right edge an emitter can launch offscreen. Give a newly guided dart room to turn back.
-        const float margin = guidingSalvo && shot.kind == ShotKind::Salvo && shot.age < 0.75f ? 176.f : 28.f;
+        float margin = 28.f;
+        if (guidingSalvo && shot.age < 0.75f)
+        {
+            if (shot.kind == ShotKind::Salvo) margin = 176.f;
+            if (shot.kind == ShotKind::Braid) margin = 230.f;
+        }
         const bool remove = shot.spent || shot.position.x < -margin || shot.position.x > width + margin ||
                             shot.position.y < -margin || shot.position.y > height + margin;
         if ((remove || gameOver()) && shot.hasTrail())

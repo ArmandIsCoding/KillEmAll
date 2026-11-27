@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CarrierRaid.hpp"
+
 #include <SFML/System/Vector2.hpp>
 
 #include <deque>
@@ -9,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-enum class EnemyKind { Scout, Striker, Gunship, PatrolBoat, BattleshipTurret };
+enum class EnemyKind { Scout, Striker, Gunship, PatrolBoat, BattleshipTurret, CarrierPart, CarrierHull };
 enum class TurretKind { Cannon, Flak, Burst };
 
 struct Battleship
@@ -30,10 +32,10 @@ struct Battleship
     bool touchesHull(sf::Vector2f point, float radius) const;
     std::optional<float> hullRayHit(sf::Vector2f origin, sf::Vector2f direction, float reach, float radius) const;
 };
-enum class ShotKind { Player, PlayerWave, Enemy, EnemyOrb, Missile, Salvo, Drone };
+enum class ShotKind { Player, PlayerWave, Enemy, EnemyOrb, Missile, Salvo, Drone, Braid };
 enum class WeaponMode { Cannon, Missiles, Laser, Arsenal };
 enum class ExplosionKind { Enemy, Gunship, Player, Wave, HullImpact };
-enum class FlightPath { Weave, CrossLane, Pursuit, Breakaway };
+enum class FlightPath { Weave, CrossLane, Pursuit, Breakaway, DeckLaunch };
 
 struct Enemy
 {
@@ -52,6 +54,7 @@ struct Enemy
     sf::Vector2f turretTarget{};
     FlightPath flight = FlightPath::Weave;
     TurretKind turretKind = TurretKind::Cannon;
+    CarrierPart carrierPart = CarrierPart::Hull;
 
     static constexpr float boatAimWarning = 0.48f;
     sf::Vector2f turretPivot() const;
@@ -89,6 +92,7 @@ struct Shot
     unsigned weaponRank = 0;
 
     bool isFriendly() const { return kind != ShotKind::Enemy && kind != ShotKind::EnemyOrb; }
+    int directDamage() const;
     bool hasTrail() const { return kind == ShotKind::Player && (verticalAcceleration != 0.f || !trailHistory.empty()); }
     TrailSample trailSample(float lookback) const;
 };
@@ -159,6 +163,7 @@ public:
     static constexpr unsigned maxWeaponRank = 10;
     static constexpr float playerHitRadius = 6.f;
     static constexpr float arsenalShieldHeight = 39.f; // Half the height of the frontal arc.
+    static constexpr float shieldTipStart = 0.72f; // Fraction of the half-arc at which a catch charges a tip.
     static constexpr float pickupRadius = 14.f;
     static constexpr float waveBlastRadius = 39.f;
     static constexpr float trailLifetime = 0.38f;
@@ -183,6 +188,8 @@ public:
 
     const std::vector<Enemy>& enemies() const { return enemies_; }
     const std::optional<Battleship>& battleship() const { return battleship_; }
+    const CarrierRaid& carrierRaid() const { return carrierRaid_; }
+    const Enemy* carrierPart(CarrierPart part) const;
     const Enemy* bossTurret(TurretKind kind) const;
     int bossHealth() const;
     const std::vector<Shot>& shots() const { return shots_; }
@@ -192,8 +199,14 @@ public:
     static sf::Vector2f arsenalShieldPoint(sf::Vector2f muzzle, float normalizedY);
     float arsenalShieldFlash() const { return arsenalShieldFlash_; }
     float arsenalShieldHitY() const { return arsenalShieldHitY_; }
+    float shieldTipGlow(int side) const;
+    float braidWindup() const;
+    sf::Vector2f braidFocus() const { return arsenalMuzzle_ + sf::Vector2f{78.f, 0.f}; }
+    unsigned braidsFired() const { return braidsFired_; }
     float arsenalPhase() const;
     sf::Vector2f arsenalEmitterOffset(unsigned index) const;
+    // Every Arsenal cycle has an odd number of alternating darts.
+    unsigned arsenalLeadEmitter() const { return salvoShotsLeft_ % 2 == 0 ? 1u - nextEmitter_ : nextEmitter_; }
     const std::vector<OrbitalDrone>& drones() const { return drones_; }
     unsigned droneUpgrades() const { return droneUpgrades_; }
     unsigned droneShotsFired() const;
@@ -249,6 +262,8 @@ private:
     void spawnBoat();
     void updateBoat(Enemy& boat, float dt, sf::Vector2f playerPosition);
     void updateBattleship(float dt);
+    void updateCarrier(float dt, sf::Vector2f player);
+    void damageCarrier(Enemy& enemy, int amount, sf::Vector2f hit, unsigned chainId);
     void updateBossTurret(Enemy& turret, float dt, sf::Vector2f playerPosition);
     void damageHull(int amount, sf::Vector2f impact, unsigned chainId = 0, bool countedKill = false);
     void sinkBattleship(unsigned chainId);
@@ -263,6 +278,8 @@ private:
     void fireMissileRack(sf::Vector2f muzzle);
     void fireVolley(sf::Vector2f muzzle);
     void fireSalvoBolt(sf::Vector2f muzzle);
+    void catchShieldShot(float normalizedY);
+    void updateBraid(float dt);
     const Enemy* droneTarget(sf::Vector2f position, const Enemy* claimed) const;
     void updateDrones(float dt, sf::Vector2f playerPosition);
     void updateShots(float dt);
@@ -280,6 +297,7 @@ private:
     PowerMeter guidance_;
     std::vector<Enemy> enemies_;
     std::optional<Battleship> battleship_;
+    CarrierRaid carrierRaid_;
     float nextBoss_ = 42.f;
     std::vector<Shot> shots_;
     std::vector<FadingTrail> fadingTrails_;
@@ -315,6 +333,10 @@ private:
     sf::Vector2f arsenalMuzzle_{};
     float arsenalShieldFlash_ = 0.f;
     float arsenalShieldHitY_ = 0.f;
+    int chargedTip_ = 0; // Negative is the upper tip, positive is the lower.
+    float tipTimeLeft_ = 0.f;
+    float braidTimeLeft_ = 0.f;
+    unsigned braidsFired_ = 0;
     float nextFormation_ = 0.f;
     float nextBoat_ = 9.f;
     float nextPulse_ = 0.f;

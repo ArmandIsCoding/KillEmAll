@@ -21,6 +21,11 @@ add_executable(KillEmAll
     src/Player.hpp
     src/Combat.cpp
     src/Combat.hpp
+    src/HullGeometry.hpp
+    src/CarrierRaid.cpp
+    src/CarrierRaid.hpp
+    src/CarrierRenderer.cpp
+    src/CarrierRenderer.hpp
     src/BattleRenderer.cpp
     src/BattleRenderer.hpp
     src/GameAudio.cpp

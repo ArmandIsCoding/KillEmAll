@@ -24,6 +24,7 @@ private:
     sf::Texture burstAtlas;
     sf::Texture battleshipHull;
     sf::Texture battleshipFlashMask;
+    sf::Texture carrierHull;
     sf::Texture droneHull;
     std::vector<sf::Vertex> geometry;
     std::vector<sf::Vertex> textured;
