@@ -19,7 +19,7 @@ constexpr float laserThreshold = 65.f;
 constexpr float fullLaserRate = 130.f;
 constexpr float fullArsenalRate = 180.f;
 constexpr std::array<float, Combat::maxDroneUpgrades + 1> droneReloads{0.42f, 0.36f, 0.30f, 0.24f, 0.20f};
-constexpr float salvoOpeningTime = 0.24f;
+constexpr float emitterTravel = 34.f;
 constexpr float burstSpacing = 0.105f;
 constexpr float singleReload = 0.23f;
 constexpr std::array<unsigned, Combat::maxWeaponRank> weaponRankKills{6, 18, 36, 64, 100, 150, 220, 320, 460, 660};
@@ -199,6 +199,60 @@ std::optional<float> rayCircleHit(sf::Vector2f origin, sf::Vector2f direction, f
     return std::max(0.f, along - halfChord);
 }
 
+constexpr float shieldTipX = 8.f;
+constexpr float shieldCrownX = 23.f;
+
+// Sweep in muzzle coordinates so a moving shield can also catch a glancing shot.
+std::optional<float> shieldImpactY(sf::Vector2f from, sf::Vector2f to, float shotRadius)
+{
+    constexpr float height = Combat::arsenalShieldHeight;
+    const float radius = shotRadius + 1.5f;
+    const auto travel = to - from;
+    float first = 0.f, last = 1.f;
+    if (!clipRayAxis(from.x, travel.x, shieldTipX - radius, shieldCrownX + radius, first, last) ||
+        !clipRayAxis(from.y, travel.y, -height - radius, height + radius, first, last))
+        return {};
+
+    // Each short piece of the arc has a rectangular face and round joints.
+    // Keep the first contact along the shot's path for the spark on the shield.
+    static const auto arc = [] {
+        std::array<sf::Vector2f, 9> points;
+        for (std::size_t i = 0; i < points.size(); ++i)
+            points[i] = Combat::arsenalShieldPoint({}, -1.f + 2.f * i / (points.size() - 1));
+        return points;
+    }();
+    const float distance = travel.length();
+    const auto direction = distance > 0.f ? travel / distance : sf::Vector2f{1.f, 0.f};
+    float nearest = std::numeric_limits<float>::infinity();
+    float hitY = 0.f;
+    for (std::size_t i = 0; i < arc.size(); ++i)
+    {
+        const auto joint = arc[i];
+        if (const auto hit = rayCircleHit(from, direction, distance, joint, radius); hit && *hit < nearest)
+        {
+            nearest = *hit;
+            hitY = joint.y;
+        }
+        if (i + 1 == arc.size())
+            break;
+        const auto edge = arc[i + 1] - joint;
+        const float length = edge.length();
+        const auto tangent = edge / length;
+        const auto local = from - joint;
+        float enter = 0.f, leave = std::min(distance, nearest);
+        if (clipRayAxis(local.dot(tangent), direction.dot(tangent), 0.f, length, enter, leave) &&
+            clipRayAxis(local.cross(tangent), direction.cross(tangent), -radius, radius, enter, leave) &&
+            enter < nearest)
+        {
+            nearest = enter;
+            hitY = joint.y + (local + direction * enter).dot(tangent) * tangent.y;
+        }
+    }
+    if (!std::isfinite(nearest))
+        return {};
+    return std::clamp(hitY / height, -1.f, 1.f);
+}
+
 sf::Vector2f velocityAt(float angle, float speed)
 {
     return {speed * std::cos(angle), speed * std::sin(angle)};
@@ -210,6 +264,13 @@ float waveOffset(float age, float phase)
     const float cycle = 2.35f * age + 0.23f + 0.11f * std::sin(9.f * age + phase);
     const float triangle = 1.f - 4.f * std::abs(cycle - std::floor(cycle) - 0.5f);
     return 31.f * triangle + 8.f * std::sin(17.f * age + phase);
+}
+
+float salvoOffset(float age, float phase, unsigned rank)
+{
+    // Start exactly on the moving emitter, then widen the two crossing streams downrange.
+    const float amplitude = emitterTravel + (24.f + 5.8f * rank) * std::min(age, 1.65f);
+    return amplitude * std::sin(phase - 7.4f * age);
 }
 
 void recordTrail(Shot& shot)
@@ -235,9 +296,10 @@ void steerShot(Shot& shot, const Enemy& target, float dt)
     const float heading = std::atan2(shot.velocity.y, shot.velocity.x) + change;
     const float cruiseSpeed = shot.kind == ShotKind::PlayerWave ? 545.f : 630.f;
     shot.velocity = velocityAt(heading, speed + (cruiseSpeed - speed) * (6.f * dt));
+    if (shot.kind == ShotKind::Salvo || shot.kind == ShotKind::PlayerWave)
+        shot.lastGuidedAge = shot.age + dt;
     if (shot.kind == ShotKind::PlayerWave)
     {
-        shot.lastGuidedAge = shot.age + dt;
         shot.waveDriftX = shot.velocity.x;
         shot.waveDriftY = shot.velocity.y;
     }
@@ -421,6 +483,13 @@ std::optional<unsigned> Combat::nextWeaponRankKills() const
     return weaponRankKills[weaponRank_];
 }
 
+sf::Vector2f Combat::arsenalShieldPoint(sf::Vector2f muzzle, float normalizedY)
+{
+    const float y = std::clamp(normalizedY, -1.f, 1.f);
+    return muzzle + sf::Vector2f{shieldCrownX - (shieldCrownX - shieldTipX) * y * y,
+                                 arsenalShieldHeight * y};
+}
+
 sf::Vector2f Combat::screenShakeOffset() const
 {
     constexpr float duration = 0.36f;
@@ -531,9 +600,13 @@ void Combat::step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffs
     }
     updatePickup(dt, playerPosition);
     updateEnemies(dt, playerPosition);
-    updateWeapon(dt, playerPosition + muzzleOffset);
+    const bool hadShield = weaponMode_ == WeaponMode::Arsenal;
+    const auto previousMuzzle = arsenalMuzzle_;
+    arsenalMuzzle_ = playerPosition + muzzleOffset;
+    arsenalShieldFlash_ = std::max(0.f, arsenalShieldFlash_ - dt / 0.18f);
+    updateWeapon(dt, arsenalMuzzle_);
     updateShots(dt);
-    collide(playerPosition);
+    collide(playerPosition, hadShield ? previousMuzzle : arsenalMuzzle_, dt);
     if (weaponMode_ == WeaponMode::Arsenal && !gameOver())
         updateDrones(dt, playerPosition);
 }
@@ -943,6 +1016,26 @@ void Combat::updateWeapon(float dt, sf::Vector2f muzzle)
     if (nextPulse_ > 0.f)
         return;
 
+    if (weaponMode_ == WeaponMode::Arsenal)
+    {
+        // Interleave both muzzles across the same reload that used to fire the entire salvo.
+        do
+        {
+            if (salvoShotsLeft_ == 0)
+            {
+                ++volleysFired_;
+                salvoShotsLeft_ = 7 + 2 * weaponRank_;
+                const float strength = std::clamp((rate - laserThreshold) / (fullArsenalRate - laserThreshold), 0.f, 1.f);
+                salvoShotSpacing_ = rankedReload(0.38f - 0.12f * strength, weaponRank_) / salvoShotsLeft_;
+            }
+            fireSalvoBolt(muzzle);
+            nextEmitter_ = 1 - nextEmitter_;
+            --salvoShotsLeft_;
+            nextPulse_ += salvoShotSpacing_;
+        } while (nextPulse_ <= 0.f);
+        return;
+    }
+
     ++volleysFired_;
     if (weaponMode_ == WeaponMode::Cannon)
     {
@@ -954,17 +1047,11 @@ void Combat::updateWeapon(float dt, sf::Vector2f muzzle)
         const float strength = std::clamp((rate - missileThreshold) / (laserThreshold - missileThreshold), 0.f, 1.f);
         nextPulse_ += rankedReload(0.35f - 0.13f * strength, weaponRank_);
     }
-    else if (weaponMode_ == WeaponMode::Laser)
+    else
     {
         fireLaser(muzzle);
         const float strength = std::clamp((rate - laserThreshold) / (fullLaserRate - laserThreshold), 0.f, 1.f);
         nextPulse_ += rankedReload(0.36f - 0.14f * strength, weaponRank_);
-    }
-    else
-    {
-        fireSalvo(muzzle);
-        const float strength = std::clamp((rate - laserThreshold) / (fullArsenalRate - laserThreshold), 0.f, 1.f);
-        nextPulse_ += rankedReload(0.38f - 0.12f * strength, weaponRank_);
     }
 }
 
@@ -1129,19 +1216,28 @@ void Combat::fireVolley(sf::Vector2f muzzle)
     nextPulse_ += rankedReload(reload / fireRateMultiplier_, weaponRank_);
 }
 
-void Combat::fireSalvo(sf::Vector2f muzzle)
+float Combat::arsenalPhase() const
 {
-    const int lanes = 3 + static_cast<int>(weaponRank_);
-    const float opening = 1.f + 0.13f * weaponRank_;
-    for (int lane = -lanes; lane <= lanes; ++lane)
-    {
-        const float spread = static_cast<float>(lane) / lanes;
-        Shot shot{ShotKind::Salvo, muzzle + sf::Vector2f{0.f, (3.f + 0.45f * weaponRank_) * spread},
-                  {690.f, 20.f * opening * spread}, 2.8f, 0.f, 0.f};
-        shot.verticalAcceleration = 270.f * opening * spread;
-        shot.weaponRank = weaponRank_;
-        shots_.push_back(shot);
-    }
+    return std::fmod(0.5f * pi + 5.4f * (elapsed_ - weaponSince_), 2.f * pi);
+}
+
+sf::Vector2f Combat::arsenalEmitterOffset(unsigned index) const
+{
+    const float phase = arsenalPhase();
+    const float sign = index == 0 ? 1.f : -1.f;
+    return {36.f + sign * 7.f * std::cos(phase), sign * emitterTravel * std::sin(phase)};
+}
+
+void Combat::fireSalvoBolt(sf::Vector2f muzzle)
+{
+    const auto origin = muzzle + arsenalEmitterOffset(nextEmitter_) + sf::Vector2f{4.f, 0.f};
+    std::uniform_real_distribution<float> jitter(-1.f, 1.f);
+    const float speed = 690.f + (5.f + 1.6f * weaponRank_) * jitter(weaponRandom_);
+    Shot shot{ShotKind::Salvo, origin, {speed, 0.f}, 2.8f, 0.f, nextEmitter_ == 0 ? 1.f : -1.f};
+    shot.wavePhase = arsenalPhase();
+    shot.weaponRank = weaponRank_;
+    shot.waveDriftY = (4.f + 1.8f * weaponRank_) * jitter(weaponRandom_);
+    shots_.push_back(shot);
 }
 
 unsigned Combat::droneShotsFired() const
@@ -1240,7 +1336,14 @@ void Combat::updateShots(float dt)
         else if (shot.kind == ShotKind::Player && !shot.trailHistory.empty())
             recordTrail(shot);
         shot.age += dt;
-        if (!steering && shot.kind == ShotKind::PlayerWave)
+        if (shot.kind == ShotKind::Salvo && shot.lastGuidedAge < 0.f)
+        {
+            // After guidance ends a dart keeps its last heading, without snapping back into the wave.
+            const float before = salvoOffset(shot.age - dt, shot.wavePhase, shot.weaponRank);
+            const float after = salvoOffset(shot.age, shot.wavePhase, shot.weaponRank);
+            shot.velocity.y = shot.waveDriftY + shot.waveSign * (after - before) / dt;
+        }
+        else if (!steering && shot.kind == ShotKind::PlayerWave)
         {
             const float before = waveOffset(shot.age - dt, shot.wavePhase);
             const float after = waveOffset(shot.age, shot.wavePhase);
@@ -1258,11 +1361,8 @@ void Combat::updateShots(float dt)
         shot.position += shot.velocity * dt;
         if (!steering && shot.verticalAcceleration != 0.f)
         {
-            // The arsenal's outer lanes bend only near the muzzle, then hold a narrow fan.
-            const float bendTime = shot.kind == ShotKind::Salvo
-                ? std::clamp(salvoOpeningTime - (shot.age - dt), 0.f, dt) : dt;
-            const float changeInSpeedY = shot.verticalAcceleration * bendTime;
-            shot.position.y += changeInSpeedY * (dt - 0.5f * bendTime);
+            const float changeInSpeedY = shot.verticalAcceleration * dt;
+            shot.position.y += 0.5f * changeInSpeedY * dt;
             shot.velocity.y += changeInSpeedY;
         }
     }
@@ -1297,6 +1397,7 @@ void Combat::hitPlayer(sf::Vector2f position)
     --lives_;
     if (gameOver())
     {
+        salvoShotsLeft_ = 0;
         recoveryKills_ = 0;
         recoveryBlinkPhase_.reset();
         lastLifeRecoveryTime_ = -std::numeric_limits<float>::infinity();
@@ -1460,7 +1561,7 @@ void Combat::sweepGunshipShockwaves()
     }
 }
 
-void Combat::collide(sf::Vector2f playerPosition)
+void Combat::collide(sf::Vector2f playerPosition, sf::Vector2f previousMuzzle, float dt)
 {
     for (auto& shot : shots_)
         if (shot.isFriendly())
@@ -1469,8 +1570,20 @@ void Combat::collide(sf::Vector2f playerPosition)
     sweepGunshipShockwaves();
     for (auto& shot : shots_)
     {
-        if (!shot.isFriendly() && !shot.spent &&
-            overlaps(shot.position, shot.radius, playerPosition, playerHitRadius))
+        if (shot.isFriendly() || shot.spent)
+            continue;
+        if (weaponMode_ == WeaponMode::Arsenal)
+        {
+            const auto from = shot.position - shot.velocity * dt - previousMuzzle;
+            if (const auto hit = shieldImpactY(from, shot.position - arsenalMuzzle_, shot.radius))
+            {
+                shot.spent = true;
+                arsenalShieldHitY_ = *hit;
+                arsenalShieldFlash_ = 1.f;
+                continue;
+            }
+        }
+        if (overlaps(shot.position, shot.radius, playerPosition, playerHitRadius))
         {
             shot.spent = true;
             hitPlayer(playerPosition);
@@ -1491,9 +1604,12 @@ void Combat::collide(sf::Vector2f playerPosition)
             hitPlayer(playerPosition);
         }
     }
-    shots_.erase(std::remove_if(shots_.begin(), shots_.end(), [this](const Shot& shot) {
-        const bool remove = shot.spent || shot.position.x < -28.f || shot.position.x > width + 28.f ||
-                            shot.position.y < -28.f || shot.position.y > height + 28.f;
+    const bool guidingSalvo = weaponMode_ == WeaponMode::Arsenal && guidanceTarget();
+    shots_.erase(std::remove_if(shots_.begin(), shots_.end(), [this, guidingSalvo](const Shot& shot) {
+        // At the right edge an emitter can launch offscreen. Give a newly guided dart room to turn back.
+        const float margin = guidingSalvo && shot.kind == ShotKind::Salvo && shot.age < 0.75f ? 176.f : 28.f;
+        const bool remove = shot.spent || shot.position.x < -margin || shot.position.x > width + margin ||
+                            shot.position.y < -margin || shot.position.y > height + margin;
         if ((remove || gameOver()) && shot.hasTrail())
             fadingTrails_.push_back({shot, 0.f});
         return remove;

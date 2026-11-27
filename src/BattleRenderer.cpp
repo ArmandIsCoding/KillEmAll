@@ -933,6 +933,81 @@ namespace
 		     {tail - edge * 0.15f, faded(tint, 0.f)}, {tail + edge * 0.15f, faded(tint, 0.f)});
 	}
 
+	void arsenalShield(Batch& batch, const Combat& combat)
+	{
+		const Vec muzzle = combat.arsenalMuzzle();
+		const float phase = combat.arsenalPhase();
+		const float flash = combat.arsenalShieldFlash();
+		const float hit = combat.arsenalShieldHitY();
+		// All bands meet at the tips. The bright outer edge follows the collision surface.
+		const auto section = [&](float t) {
+			const Vec edge = Combat::arsenalShieldPoint(muzzle, t);
+			const float bow = 1.f - t * t;
+			const float sweep = 0.5f + 0.5f * std::cos(phase * 2.f - t * 7.f);
+			const float local = flash * std::max(0.f, 1.f - 3.2f * std::abs(t - hit));
+			const Color rim = faded({69, 255, 151}, 0.75f + 0.23f * sweep);
+			const Color core = faded({219, 255, 205}, 0.34f + 0.25f * sweep + 0.66f * local);
+			return std::array<sf::Vertex, 6>{{
+				{edge - Vec{3.f + 12.f * bow, 0.f}, {24, 197, 139, 0}},
+				{edge - Vec{1.f + 3.f * bow, 0.f}, faded({11, 145, 122}, 0.50f + 0.40f * local)},
+				{edge - Vec{0.3f + 1.2f * bow, 0.f}, rim},
+				{edge, core},
+				{edge + Vec{0.4f + 1.1f * bow, 0.f}, faded({14, 119, 94}, 0.70f)},
+				{edge + Vec{1.f + 4.f * bow, 0.f}, {54, 239, 167, 0}}
+			}};
+		};
+		constexpr int segments = 24;
+		auto previous = section(-1.f);
+		for (int i = 1; i <= segments; ++i)
+		{
+			const auto next = section(2.f * i / segments - 1.f);
+			for (std::size_t band = 1; band < next.size(); ++band)
+				quad(batch, previous[band - 1], previous[band], next[band], next[band - 1]);
+			previous = next;
+		}
+		if (flash > 0.f)
+		{
+			const Vec impact = Combat::arsenalShieldPoint(muzzle, hit);
+			puff(batch, impact, 2.f + flash * 3.4f, faded({222, 255, 218}, 0.9f * flash));
+			for (const Vec dir : {Vec{0.50f, -0.87f}, Vec{0.96f, -0.28f}, Vec{0.80f, 0.60f}})
+			{
+				const Vec tip = impact + dir * (4.f + 12.f * (1.f - flash));
+				streak(batch, tip - dir * (2.f + 3.f * flash), tip, dir, 0.85f,
+				       faded({150, 255, 175}, flash));
+			}
+		}
+	}
+
+	constexpr std::array<Color, 2> oscillatorLight{{ {74, 248, 136}, {218, 241, 82} }};
+
+	void drawOscillator(Batch& batch, Vec center, unsigned index, float flash)
+	{
+		const float x = std::round(center.x), y = std::round(center.y);
+		const Color ink{45, 42, 44}, copper{202, 88, 47}, shine{255, 170, 98};
+		const Color lens = oscillatorLight[index];
+		// A split copper collar, two prongs, and a recessed luminous muzzle.
+		rectangle(batch, x - 6.f, y - 3.f, 10.f, 7.f, ink);
+		rectangle(batch, x - 4.f, y - 6.f, 6.f, 12.f, ink);
+		rectangle(batch, x - 5.f, y - 2.f, 6.f, 5.f, {132, 65, 53});
+		rectangle(batch, x - 4.f, y - 3.f, 3.f, 5.f, copper);
+		for (const float side : {-1.f, 1.f})
+		{
+			rectangle(batch, x - 3.f, y + side * 4.f - 1.f, 8.f, 3.f, ink);
+			rectangle(batch, x - 3.f, y + side * 4.f, 6.f, 1.f, shine);
+			rectangle(batch, x, y + side * 3.f, 5.f, 1.f, copper);
+		}
+		rectangle(batch, x - 3.f, y - 1.f, 2.f, 2.f, {255, 196, 116});
+		rectangle(batch, x, y - 1.f, 5.f, 3.f, {52, 86, 73});
+		rectangle(batch, x + 2.f, y, 3.f, 1.f, lens);
+		if (flash > 0.f)
+		{
+			const Vec tip{x + 4.f, y};
+			const Vec axis{1.f, 0.f};
+			exhaust(batch, tip, -axis, 3.f + 6.f * flash, 2.f, faded(lens, flash));
+			rectangle(batch, tip.x, y, 1.f + 2.f * flash, 1.f, faded({246, 255, 198}, flash));
+		}
+	}
+
 	void projectile(Batch& batch, const Shot& shot)
 	{
 		const Vec p = shot.position;
@@ -944,15 +1019,14 @@ namespace
 
 		if (shot.kind == ShotKind::Salvo)
 		{
-			const Vec tail = p - direction * (8.f + 4.f * power);
-			const Vec wing = direction.perpendicular() * (2.8f + 1.4f * power);
-			const Vec tip = p + direction * 6.f;
-			if (wake > 0.f)
-				exhaust(batch, tail, direction, 32.f * wake, 1.5f + power, {255, 145, 49, 180});
-			batch.insert(batch.end(), { {tail + wing, {228, 124, 56}}, {tip, {255, 248, 192}},
-				{tail - wing, {160, 75, 44}} });
-			bolt(batch, tail - direction * 4.f, tip, direction, 1.6f, { 255, 207, 99 });
-			streak(batch, tail + direction * 6.f, tip - direction, direction, 0.85f, { 255, 253, 220 });
+			const Color tint = oscillatorLight[shot.waveSign > 0.f ? 0 : 1];
+			const Vec tail = p - direction * (4.5f + 1.5f * power);
+			const Vec tip = p + direction * 2.5f;
+			exhaust(batch, tail, direction, (4.f + 3.f * power) * std::min(1.f, shot.age * 30.f),
+			        1.5f, faded(tint, 0.65f));
+			bolt(batch, tail, tip, direction, 2.f, {23, 71, 60});
+			bolt(batch, tail + direction, tip, direction, 1.5f, tint);
+			streak(batch, p, tip - direction, direction, 0.70f, {247, 255, 206});
 			return;
 		}
 
@@ -1304,6 +1378,8 @@ void BattleRenderer::drawEffects(sf::RenderTarget& target, const Combat& combat)
 		const auto& drones = combat.drones();
 		for (std::size_t i = 0; i < drones.size(); ++i)
 			drawDrone(target, geometry, droneHull, drones[i], droneColors[i], combat.elapsed());
+		if (combat.weaponMode() == WeaponMode::Arsenal)
+			arsenalShield(geometry, combat);
 	}
 	for (const Explosion& effect : combat.explosions())
 	{
@@ -1315,9 +1391,20 @@ void BattleRenderer::drawEffects(sf::RenderTarget& target, const Combat& combat)
 			burst(geometry, textured, foreground, effect);
 	}
 	// Hostile rounds stay readable over every flame, shockwave and friendly shot.
+	std::array<float, 2> emitterFlash{};
 	for (const Shot& shot : combat.shots())
 		if (shot.isFriendly())
+		{
 			projectile(foreground, shot);
+			if (shot.kind == ShotKind::Salvo)
+			{
+				auto& flash = emitterFlash[shot.waveSign > 0.f ? 0 : 1];
+				flash = std::max(flash, 1.f - shot.age / 0.035f);
+			}
+		}
+	if (!combat.gameOver() && combat.weaponMode() == WeaponMode::Arsenal)
+		for (unsigned i = 0; i < emitterFlash.size(); ++i)
+			drawOscillator(foreground, combat.arsenalMuzzle() + combat.arsenalEmitterOffset(i), i, emitterFlash[i]);
 	for (const auto& ray : combat.laserPulses())
 		laserFlash(foreground, ray);
 	if (const auto& pickup = combat.fireRatePickup())

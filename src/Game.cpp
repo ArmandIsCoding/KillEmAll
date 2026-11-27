@@ -149,7 +149,7 @@ void Game::drawPlayer()
     if (!paused && recoveryGlow > 0.f)
         player.drawRecoveryGlow(window, recoveryGlow);
 
-    if (muzzleFlash > 0.f && combat.weaponMode() != WeaponMode::Laser)
+    if (muzzleFlash > 0.f && (combat.weaponMode() == WeaponMode::Cannon || combat.weaponMode() == WeaponMode::Missiles))
     {
         const auto tip = position + player.muzzleOffset();
         const float length = 8.f + (8.f + 0.9f * combat.weaponRank()) * muzzleFlash / 0.055f;

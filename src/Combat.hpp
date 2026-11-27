@@ -158,6 +158,7 @@ public:
     static constexpr unsigned maxDroneUpgrades = 4;
     static constexpr unsigned maxWeaponRank = 10;
     static constexpr float playerHitRadius = 6.f;
+    static constexpr float arsenalShieldHeight = 39.f; // Half the height of the frontal arc.
     static constexpr float pickupRadius = 14.f;
     static constexpr float waveBlastRadius = 39.f;
     static constexpr float trailLifetime = 0.38f;
@@ -187,6 +188,12 @@ public:
     const std::vector<Shot>& shots() const { return shots_; }
     const std::vector<LaserPulse>& laserPulses() const { return laserPulses_; }
     WeaponMode weaponMode() const { return weaponMode_; }
+    const sf::Vector2f& arsenalMuzzle() const { return arsenalMuzzle_; }
+    static sf::Vector2f arsenalShieldPoint(sf::Vector2f muzzle, float normalizedY);
+    float arsenalShieldFlash() const { return arsenalShieldFlash_; }
+    float arsenalShieldHitY() const { return arsenalShieldHitY_; }
+    float arsenalPhase() const;
+    sf::Vector2f arsenalEmitterOffset(unsigned index) const;
     const std::vector<OrbitalDrone>& drones() const { return drones_; }
     unsigned droneUpgrades() const { return droneUpgrades_; }
     unsigned droneShotsFired() const;
@@ -255,11 +262,11 @@ private:
     void fireLaser(sf::Vector2f muzzle);
     void fireMissileRack(sf::Vector2f muzzle);
     void fireVolley(sf::Vector2f muzzle);
-    void fireSalvo(sf::Vector2f muzzle);
+    void fireSalvoBolt(sf::Vector2f muzzle);
     const Enemy* droneTarget(sf::Vector2f position, const Enemy* claimed) const;
     void updateDrones(float dt, sf::Vector2f playerPosition);
     void updateShots(float dt);
-    void collide(sf::Vector2f playerPosition);
+    void collide(sf::Vector2f playerPosition, sf::Vector2f previousMuzzle, float dt);
     void sweepGunshipShockwaves();
     void hitEnemies(Shot& shot);
     void damage(Enemy& enemy, int amount, unsigned chainId = 0, std::optional<sf::Vector2f> impact = {});
@@ -305,6 +312,9 @@ private:
     float elapsed_ = 0.f;
     float distance_ = 0.f;
     float grace_ = 0.f;
+    sf::Vector2f arsenalMuzzle_{};
+    float arsenalShieldFlash_ = 0.f;
+    float arsenalShieldHitY_ = 0.f;
     float nextFormation_ = 0.f;
     float nextBoat_ = 9.f;
     float nextPulse_ = 0.f;
@@ -312,6 +322,9 @@ private:
     std::vector<OrbitalDrone> drones_;
     std::vector<LaserPulse> laserPulses_;
     int burstRemaining_ = 0;
+    unsigned salvoShotsLeft_ = 0;
+    unsigned nextEmitter_ = 0;
+    float salvoShotSpacing_ = 0.f;
     unsigned formation_ = 0;
     unsigned explosionSerial_ = 0;
     unsigned volleysFired_ = 0;

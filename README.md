@@ -26,15 +26,17 @@ Así es cada arma en rango inicial. Los tiempos son los de una partida sin recog
 | 30 s | Se suman dos proyectiles verdes que zigzaguean y detonan al tocar un enemigo o tras casi un segundo de vuelo. La explosión también alcanza a los que vuelan cerca. |
 | 45 s | **Misiles**. Salen de a uno, alternando los dos lados del avión. Aceleran en vuelo, dejan humo y explotan al tocar un enemigo. El impacto hace 5 puntos de daño y los rivales cercanos reciben 2. |
 | Cerca de 99 s | **Láser**. Cada pulso inflige 8 puntos de daño a los enemigos que atraviesa. El acorazado detiene el haz en el punto de impacto. |
-| Cerca de 153 s | **Arsenal**. Siete proyectiles salen juntos por la nariz del avión y se abren de a poco. Un robot orbital cubre otros ángulos con su propio cañón. |
+| Cerca de 153 s | **Arsenal**. Se despliega un escudo delante de la nariz. Dos osciladores disparan por turnos desde el otro lado del arco y un robot orbital cubre otros ángulos. |
 
 De vez en cuando cruza la pantalla un **potenciador turquesa con dos flechas**. Mientras usás el cañón, cada uno multiplica su cadencia por **1,5**. Cuando la cadencia base del cañón con esos potenciadores llegaría a 30 proyectiles por segundo, el avión equipa misiles automáticamente. Las mejoras adelantan también el paso al láser, después de al menos 12 segundos con misiles.
 
 Con el láser equipado, el salto al Arsenal tarda entre **22 y 55 segundos de vuelo**, según las mejoras que lleves. El primer robot apunta al enemigo visible más cercano, incluso si viene desde atrás. Los potenciadores que recogés con el Arsenal aceleran la salva frontal y mejoran a los robots.
 
+Los dos osciladores se mueven en sentidos opuestos. Sus dardos verdes y lima se cruzan y se van separando con la distancia. El arco turquesa bloquea las balas y los orbes enemigos que lo tocan y da un destello justo donde pegan. Los tiros que entran por los flancos o por la cola todavía pueden alcanzarte.
+
 Debajo de **ARSENAL** podés ver cuánto falta para el segundo robot. Con el **tercer potenciador** aparece un compañero verde que orbita del lado opuesto al celeste. Cada uno apunta a un enemigo distinto. Si queda un solo blanco, el celeste sigue disparando y el verde espera al próximo. Con las cuatro mejoras, el intervalo base entre descargas de cada robot baja de **0,42 a 0,20 segundos**. El rango por bajas acorta aún más la recarga.
 
-![El robot celeste y el verde orbitan en lados opuestos y disparan a blancos distintos mientras la salva del avión se abre hacia adelante.](docs/media/arsenal.gif)
+![Los osciladores dibujan dos ondas cruzadas delante del avión, el escudo intercepta una bala en su borde inferior y los dos robots disparan a sus blancos.](docs/media/arsenal.gif)
 
 Al despegar, los tiros salen hacia adelante. Algunos dorados se curvan en pleno vuelo y dejan una estela que se afina y se apaga detrás de ellos. Con más proyectiles por segundo, el ángulo de salida varía más, los arcos son más frecuentes y las estelas brillan más. En la última etapa del cañón también desprenden chispas doradas. Los verdes siguen su propio zigzag.
 
@@ -47,7 +49,7 @@ El primer rango llega con **6 bajas**. Los siguientes se alcanzan a las **18, 36
 | Cañón | Las salvas ganan pares de tiros dorados, más apertura y curvas más pronunciadas. Una vez habilitadas las ondas verdes, pueden salir hasta seis juntas. |
 | Misiles | Los lanzadores pasan de alternar un misil a abrir hasta seis en abanico, cada uno con su propia estela de fuego y humo. |
 | Láser | Al haz central se le suman pares laterales hasta un máximo de nueve. Con **Espacio** el abanico se cierra sobre el blanco marcado. Cada haz se corta donde toca el acorazado. Si varios alcanzan el mismo blanco, recibe un solo impacto por pulso. |
-| Arsenal y robots | La salva frontal pasa de siete a **27 dardos**. Cada robot puede disparar hasta **cuatro tiros** a distintos puntos del enemigo que está siguiendo. |
+| Arsenal y robots | Los osciladores pasan de siete a **27 dardos por ciclo**. A mayor rango, sus ondas se abren más y varían la velocidad y la trayectoria de cada tiro. Cada robot puede disparar hasta **cuatro tiros** a distintos puntos del enemigo que está siguiendo. |
 
 En R10 el tiempo entre descargas es un **15 % menor** que en R0 con los mismos potenciadores.
 
