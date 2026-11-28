@@ -2,7 +2,7 @@
 
 Un *bullet hell* de desplazamiento horizontal hecho en **C++17 y SFML 3.1**. Despegás con tres vidas y un avión que dispara solo. Desde el puerto industrial hasta la Fortaleza del Eclipse te esperan diez escenarios, cada uno con su propio jefe final.
 
-[Compilar y jugar en Windows](#compilar-en-visual-studio) · [Controles](#controles) · [Los diez niveles](#los-diez-niveles)
+[Compilar y jugar en Windows](#compilar-en-visual-studio) · [Volver a un nivel](#volver-a-un-nivel) · [Controles](#controles) · [Los diez niveles](#los-diez-niveles)
 
 El puerto tiene un tema original de **heavy metal arcade a 150 BPM**. Dos guitarras distorsionadas se reparten el riff en estéreo sobre un bajo con púa y una batería con doble bombo. A mitad de la vuelta, la batería pasa a medio tiempo y entra la melodía de guitarra. [Escuchá el tema del puerto](assets/arcade/audio/coast-patrol.wav).
 
@@ -13,6 +13,16 @@ Cada 50 enemigos que derribás recuperás una vida, hasta volver a tres. Tambié
 Al recuperar la vida, el avión da un destello dorado al mismo tiempo que aparece **+1 VIDA** debajo del puntaje y suenan tres notas cortas seguidas de un acorde. El brillo se desvanece en menos de medio segundo de vuelo y el cartel sigue visible un poco más. [Escuchá el aviso de vida recuperada](assets/arcade/audio/life-recovered.wav).
 
 ![Cuatro pasadas sobre el puerto muestran el cañón dorado, las salvas de misiles, el abanico de haces láser y el Arsenal con escolta orbital.](docs/media/combate.gif)
+
+## Volver a un nivel
+
+Al superar un jefe se guarda el comienzo del siguiente nivel. La próxima vez que abras el juego, **Continuar** te lleva al nivel más avanzado con las vidas, el puntaje, el arma, los robots y la carga de poderes que tenías al entrar. Podés cerrar el juego incluso durante la explosión del jefe derrotado.
+
+En **Elegir nivel**, movete con las flechas o **WASD** y apretá **Enter** para despegar. Cada escenario recupera su propio punto de partida. Si volvés a superar uno, se actualiza el punto de entrada del siguiente. Tanto al rejugar como al elegir **Nueva partida**, los niveles que ya abriste siguen disponibles.
+
+![Selector de la campaña con los primeros cuatro escenarios desbloqueados y el Fiordo Polar listo para despegar.](docs/media/selector-de-niveles.png)
+
+Durante una partida, **P** y después **L** abren el selector. También podés abrirlo con **L** al terminar. **Esc** vuelve a la pantalla anterior mientras elegís. En Windows, el progreso se guarda por usuario en `%LOCALAPPDATA%\KillEmAll`.
 
 ## Los diez niveles
 
@@ -88,9 +98,10 @@ En R10 el tiempo entre descargas es un **15 % menor** que en R0 con los mismos p
 | **Shift** (mantener) | Activar el vuelo de precisión. Toda la acción pasa al **45 %** de su velocidad y se ilumina el punto vulnerable del avión. |
 | **Barra espaciadora** (mantener) | Guiar los disparos del cañón, los misiles y las salvas del arsenal, o apuntar el láser al enemigo más fuerte en pantalla. El robot celeste prioriza ese blanco y el verde apunta al siguiente en prioridad. |
 | **P** | Pausar o reanudar. |
+| **L** | Abrir el selector de niveles desde la pausa o la pantalla final. |
 | **M** | Silenciar o activar la música y los efectos. |
 | **Enter** o **R** | Empezar de nuevo en el puerto después de perder las tres vidas o completar la campaña. |
-| **Esc** | Salir del juego. |
+| **Esc** | Volver desde el selector. En el menú principal o durante el vuelo, salir del juego. |
 
 Podés usar **precisión y guiado juntos**. La cámara lenta alcanza el vuelo, el desplazamiento de la costa, los enemigos, las balas de ambos bandos, la cadencia del cañón y las explosiones. También baja el ritmo de la música, los sonidos de combate y las fanfarrias.
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CampaignCheckpoint.hpp"
 #include "CarrierRaid.hpp"
 #include "StageBoss.hpp"
 
@@ -173,6 +174,10 @@ struct Combo
 class Combat
 {
 public:
+    using Checkpoint = CampaignCheckpoint;
+    // Capture on the update that enters a level, before its first formation or salvo.
+    Checkpoint checkpoint(sf::Vector2f playerPosition) const;
+    bool restoreCheckpoint(const Checkpoint& entrance);
     static constexpr unsigned levelCount = 10;
     unsigned level() const { return level_; }
     float levelTime() const { return static_cast<float>(elapsed_ - levelStartTime_); }
@@ -285,6 +290,7 @@ private:
     void step(float dt, sf::Vector2f playerPosition, sf::Vector2f muzzleOffset);
     void clearEncounters();
     void finishLevel();
+    void startLevelWaves();
     void spawnFormation();
     void spawnPatrol();
     void updateBoat(Enemy& boat, float dt, sf::Vector2f playerPosition);

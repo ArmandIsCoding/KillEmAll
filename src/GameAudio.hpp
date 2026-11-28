@@ -15,7 +15,7 @@ class GameAudio
 public:
     explicit GameAudio(const std::filesystem::path& folder);
     void update(const Combat& combat, bool weaponUpgraded);
-    void restart();
+    void restart(const Combat& combat);
     void setPlaying(bool playing);
     void toggleMute();
     bool muted() const { return silent; }

@@ -49,7 +49,7 @@ void Game::enableAudio()
         audio.emplace(audioDirectory);
         // Enabling audio mid-flight starts with the next combat event.
         audio->update(combat, false);
-        audio->setPlaying(!paused && !combat.finished());
+        audio->setPlaying(screen == Screen::Flight && !paused && !combat.finished());
     }
     catch (const std::exception& error)
     {
@@ -57,30 +57,95 @@ void Game::enableAudio()
     }
 }
 
-void Game::restart()
+void Game::launchLevel(unsigned level)
 {
-    combat.reset();
+    sf::Vector2f position = launchPosition;
+    if (level == 1)
+        combat.reset();
+    else
+    {
+        const auto* checkpoint = progress.checkpoint(level);
+        if (!checkpoint || !combat.restoreCheckpoint(*checkpoint))
+            return;
+        position = {checkpoint->playerX, checkpoint->playerY};
+    }
+    screen = Screen::Flight;
+    restored = level > 1;
     pressed.clear();
-    player.setPosition(launchPosition);
+    player.setPosition(position);
+    player.update({}, sf::Time::Zero, fieldSize);
     powerNotice = pickupNotice = muzzleFlash = 0.f;
     paused = false;
     if (audio)
-        audio->restart();
+        audio->restart(combat);
+}
+
+void Game::openLevelSelect()
+{
+    finishClearedTransition();
+    if (saveFailed)
+        saveFailed = !progress.flush();
+    selectorParent = screen;
+    selectedLevel = screen == Screen::Flight ? combat.level() : progress.highestUnlocked();
+    screen = Screen::LevelSelect;
+    pressed.clear();
+}
+
+void Game::menuKeyPressed(Key key)
+{
+    const bool up = key == Key::Up || key == Key::W;
+    const bool down = key == Key::Down || key == Key::S;
+    if (screen == Screen::CampaignMenu)
+    {
+        const unsigned unlocked = progress.highestUnlocked();
+        const unsigned options = unlocked > 1 ? 3 : 2;
+        if (up || down)
+            selectedOption = (selectedOption + (down ? 1 : options - 1)) % options;
+        else if (key == Key::Enter)
+        {
+            if (selectedOption == 1)
+                openLevelSelect();
+            else
+                launchLevel(selectedOption == 0 ? unlocked : 1);
+        }
+        else if (key == Key::Escape)
+            window.close();
+        return;
+    }
+
+    // The route list has levels 1–5 on the left and 6–10 on the right.
+    constexpr unsigned rows = Combat::levelCount / 2;
+    const unsigned column = (selectedLevel - 1) / rows;
+    const unsigned row = (selectedLevel - 1) % rows;
+    if (up || down)
+        selectedLevel = column * rows + (row + (down ? 1 : rows - 1)) % rows + 1;
+    else if ((key == Key::Left || key == Key::A) && column == 1)
+        selectedLevel -= rows;
+    else if ((key == Key::Right || key == Key::D) && column == 0)
+        selectedLevel += rows;
+    else if (key == Key::Enter)
+        launchLevel(selectedLevel);
+    else if (key == Key::Escape)
+        screen = selectorParent;
 }
 
 void Game::keyPressed(Key key)
 {
-    if (key == Key::Escape)
-        window.close();
-    else if (key == Key::M)
+    if (key == Key::M)
     {
         if (audio)
             audio->toggleMute();
         else
             enableAudio();
     }
+    else if (screen != Screen::Flight)
+        menuKeyPressed(key);
+    else if (key == Key::Escape)
+        window.close();
+    else if (key == Key::L && (paused || combat.finished()))
+        openLevelSelect();
     else if ((key == Key::Enter || key == Key::R) && combat.finished())
-        restart();
+        launchLevel(1);
     else if (key == Key::P && !combat.finished())
     {
         paused = !paused;
@@ -106,8 +171,28 @@ bool Game::precisionFlight() const
     return pressed.count(Key::LShift) || pressed.count(Key::RShift);
 }
 
+void Game::updateCombat(float slice)
+{
+    const unsigned previousLevel = combat.level();
+    combat.update(slice, player.getPosition(), player.muzzleOffset());
+    if (combat.level() != previousLevel)
+    {
+        restored = false;
+        saveFailed = !progress.save(combat.checkpoint(player.getPosition()));
+    }
+}
+
+void Game::finishClearedTransition()
+{
+    // Leaving during a defeated boss's outro still unlocks the next level with its normal entry state.
+    while (combat.levelCleared() && !combat.finished() && combat.level() < Combat::levelCount)
+        updateCombat(Combat::maxStep);
+}
+
 void Game::update(float dt)
 {
+    if (screen != Screen::Flight)
+        return;
     combat.setPowerInput(precisionFlight(), pressed.count(Key::Space) != 0);
     if (paused)
         return;
@@ -124,7 +209,7 @@ void Game::update(float dt)
         const float worldSlice = realSlice * combat.timeScale();
         if (!combat.finished())
             player.update(direction, sf::seconds(worldSlice), fieldSize);
-        combat.update(realSlice, player.getPosition(), player.muzzleOffset());
+        updateCombat(realSlice);
         worldDt += worldSlice;
         dt -= realSlice;
     }
@@ -184,6 +269,17 @@ void Game::drawPlayer()
 void Game::draw()
 {
     window.clear({9, 13, 21});
+    if (screen != Screen::Flight)
+    {
+        window.setView(hudView);
+        if (screen == Screen::CampaignMenu)
+            hud.drawCampaignMenu(window, selectedOption, progress.highestUnlocked(),
+                                 static_cast<unsigned>(progress.unlockedLevels().count()), saveFailed);
+        else
+            hud.drawLevelSelect(window, selectedLevel, progress.unlockedLevels(), saveFailed);
+        window.display();
+        return;
+    }
     sf::View camera = fieldView;
     camera.move(combat.screenShakeOffset());
     window.setView(camera);
@@ -192,7 +288,8 @@ void Game::draw()
     drawPlayer();
     battle.drawEffects(window, combat);
     window.setView(hudView);
-    hud.draw(window, combat, paused, !audio || audio->muted(), bestScore, powerNotice > 0.f, pickupNotice > 0.f);
+    hud.draw(window, combat, paused, !audio || audio->muted(), bestScore, powerNotice > 0.f, pickupNotice > 0.f,
+             saveFailed, restored);
     window.display();
 }
 
@@ -219,4 +316,7 @@ void Game::run()
         update(std::min(clock.restart().asSeconds(), 0.05f));
         draw();
     }
+    finishClearedTransition();
+    if (saveFailed)
+        progress.flush();
 }

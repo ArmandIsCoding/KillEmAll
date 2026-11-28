@@ -457,10 +457,15 @@ void Combat::finishLevel()
     levelStartTime_ = elapsed_;
     levelStartDistance_ = distance_;
     clearAge_ = 0.f;
+    stageBoss_.reset();
+    startLevelWaves();
+}
+
+void Combat::startLevelWaves()
+{
     nextFormation_ = 2.6f;
     nextPatrol_ = 8.f;
     formation_ = 0;
-    stageBoss_.reset();
 }
 
 const Enemy* Combat::bossTurret(TurretKind kind) const

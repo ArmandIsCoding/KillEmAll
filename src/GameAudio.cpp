@@ -72,7 +72,7 @@ GameAudio::GameAudio(const std::filesystem::path& folder)
     hullImpact.setVolume(32.f);
 }
 
-void GameAudio::restart()
+void GameAudio::restart(const Combat& combat)
 {
     setPlaying(false);
     setTimeScale(1.f);
@@ -90,6 +90,8 @@ void GameAudio::restart()
     lastWorldTime_ = 0.f;
     wasSeaOnly_ = false;
     bossPresent = false;
+    // Adopt checkpoint counters before sound is enabled so old kills and refills stay quiet.
+    update(combat, false);
     setPlaying(true);
 }
 

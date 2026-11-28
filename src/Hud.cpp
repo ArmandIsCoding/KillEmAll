@@ -5,6 +5,7 @@
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Graphics/Sprite.hpp>
 #include <SFML/Graphics/Text.hpp>
+#include <SFML/Graphics/Vertex.hpp>
 
 #include <algorithm>
 #include <array>
@@ -215,25 +216,90 @@ void panel(sf::RenderTarget& target, float x, float y, float w, float h, sf::Col
     rect(target, x, y, w, 4, accent);
 }
 
-void pausePanel(sf::RenderTarget& target, const sf::Font& font, bool muted, WeaponMode weapon)
+std::string levelNumber(unsigned level)
 {
-    panel(target, 211, 145, 538, 357, cyan);
-    label(target, font, "PAUSA", 243, 173, 32, ivory);
+    return (level < 10 ? "0" : "") + std::to_string(level);
+}
+
+std::string availableCount(std::size_t count)
+{
+    return std::to_string(count) + " / " + std::to_string(Combat::levelCount) +
+           (count == 1 ? " DESBLOQUEADO" : " DESBLOQUEADOS");
+}
+
+void menuPanorama(sf::RenderTarget& target, const sf::Texture& port, const sf::Texture& horizons,
+                  unsigned level, int height)
+{
+    const auto& texture = level == 1 ? port : horizons;
+    const sf::Vector2i dimensions(texture.getSize());
+    sf::IntRect tile{{0, 0}, dimensions};
+    if (level > 1)
+    {
+        const int index = static_cast<int>(level) - 2;
+        const sf::Vector2i cell{dimensions.x / 3, dimensions.y / 3};
+        tile = {{cell.x * (index % 3) + 2, cell.y * (index / 3) + 2}, cell - sf::Vector2i{4, 4}};
+    }
+    const float scale = std::max(960.f / tile.size.x, static_cast<float>(height) / tile.size.y);
+    const sf::Vector2i crop{static_cast<int>(std::round(960.f / scale)), static_cast<int>(std::round(height / scale))};
+    const auto spare = tile.size - crop;
+    tile.position += {spare.x / 2, static_cast<int>(spare.y * .62f)};
+    sf::Sprite scene(texture, {tile.position, crop});
+    scene.setScale({960.f / crop.x, static_cast<float>(height) / crop.y});
+    target.draw(scene);
+
+    // Leave the landscape bright on the right and keep every title readable over snow and cloud.
+    const sf::Color shade{10, 22, 29, 241};
+    const sf::Color clear{10, 22, 29, 0};
+    const float bottom = static_cast<float>(height);
+    const sf::Vertex scrim[] = {
+        {{0, 0}, shade}, {{960, 0}, clear}, {{0, bottom}, shade}, {{960, bottom}, clear}
+    };
+    target.draw(scrim, 4, sf::PrimitiveType::TriangleStrip);
+}
+
+void menuFooter(sf::RenderTarget& target, const sf::Font& font, bool selector, bool locked)
+{
+    rect(target, 0, 545, 960, 55, ink);
+    rect(target, 0, 545, 960, 2, seam);
+    keycap(target, font, "FLECHAS", 39, 561, 88);
+    label(target, font, selector ? "ELEGIR NIVEL" : "MOVER", 140, 568, 10, dim);
+    keycap(target, font, "ENTER", 326, 561, 67);
+    label(target, font, locked ? "BLOQUEADO" : selector ? "DESPEGAR" : "ELEGIR", 407, 568, 10, locked ? dim : ivory);
+    keycap(target, font, "ESC", 791, 561, 48);
+    label(target, font, selector ? "VOLVER" : "SALIR", 850, 568, 10, dim);
+}
+
+void padlock(sf::RenderTarget& target, float x, float y)
+{
+    rect(target, x + 3, y, 8, 2, dim);
+    rect(target, x + 2, y + 2, 2, 5, dim);
+    rect(target, x + 10, y + 2, 2, 5, dim);
+    rect(target, x, y + 7, 14, 9, dim);
+    rect(target, x + 6, y + 9, 2, 4, ink);
+}
+
+void pausePanel(sf::RenderTarget& target, const sf::Font& font, bool muted, WeaponMode weapon, bool saveFailed)
+{
+    panel(target, 211, 118, 538, 429, cyan);
+    label(target, font, "PAUSA", 243, 144, 32, ivory);
     if (weapon == WeaponMode::Arsenal)
-        label(target, font, U"ATAJ\u00c1 UN TIRO CON CADA PUNTA PARA LANZAR LA TRENZA.", 243, 215, 9, cyan);
-    rect(target, 243, 229, 474, 2, seam);
+        label(target, font, U"ATAJ\u00c1 UN TIRO CON CADA PUNTA PARA LANZAR LA TRENZA.", 243, 185, 9, cyan);
+    rect(target, 243, 205, 474, 2, seam);
 
     const auto row = [&](float y, const sf::String& key, const sf::String& action) {
         keycap(target, font, key, 243, y, 178);
         label(target, font, action, 439, y + 5, 12, ivory);
     };
-    row(248, "WASD / FLECHAS", "MOVERSE");
-    row(286, "MANTENER SHIFT", U"C\u00c1MARA LENTA AL 45%");
-    row(324, "MANTENER ESPACIO", U"GUIAR AL M\u00c1S FUERTE");
-    row(362, "M", muted ? "ACTIVAR SONIDO" : "SILENCIAR SONIDO");
-    row(400, "P", "REANUDAR");
-    row(438, "ESC", "SALIR");
-    label(target, font, U"SI AGOT\u00c1S UNA BARRA, ESPER\u00c1 LA RECARGA COMPLETA.", 243, 476, 9, dim);
+    row(225, "WASD / FLECHAS", "MOVERSE");
+    row(261, "MANTENER SHIFT", U"C\u00c1MARA LENTA AL 45%");
+    row(297, "MANTENER ESPACIO", U"GUIAR AL M\u00c1S FUERTE");
+    row(333, "M", muted ? "ACTIVAR SONIDO" : "SILENCIAR SONIDO");
+    row(369, "P", "REANUDAR");
+    row(405, "L", "ELEGIR NIVEL");
+    row(441, "ESC", "SALIR");
+    label(target, font, U"EL SELECTOR TE LLEVA AL INICIO DEL NIVEL QUE ELIJAS.", 243, 488, 9, dim);
+    label(target, font, saveFailed ? U"PROGRESO SIN GUARDAR EN DISCO" :
+          U"SI AGOT\u00c1S UNA BARRA, ESPER\u00c1 LA RECARGA COMPLETA.", 243, 511, 9, saveFailed ? gold : dim);
 }
 
 void campaignBossMeter(sf::RenderTarget& target, const sf::Font& font, const StageBoss& boss)
@@ -277,18 +343,101 @@ void endPanel(sf::RenderTarget& target, const sf::Font& font, const Combat& comb
     label(target, font, "VOLVER A JUGAR", 334, 403, 12, ivory);
     keycap(target, font, "ESC", 568, 397, 49);
     label(target, font, "SALIR", 632, 404, 10, dim);
+    keycap(target, font, "L", 248, 429, 28);
+    label(target, font, "ELEGIR NIVEL", 289, 435, 10, ivory);
 }
 }
 
 Hud::Hud(const std::filesystem::path& arcadeDir)
     : font(arcadeDir / "font" / "PressStart2P-Regular.ttf"),
-      lifeTexture(arcadeDir / "player" / "reposo.png")
+      lifeTexture(arcadeDir / "player" / "reposo.png"), portPreview(arcadeDir / "coast.png"),
+      campaignPreviews(arcadeDir / "campaign-horizons.png")
 {
     font.setSmooth(false);
 }
 
+void Hud::drawCampaignMenu(sf::RenderTarget& target, unsigned selectedOption, unsigned highest,
+                           unsigned unlockedCount, bool saveFailed) const
+{
+    const unsigned preview = selectedOption == 2 ? 1 : highest;
+    menuPanorama(target, portPreview, campaignPreviews, preview, 545);
+    sf::Sprite plane(lifeTexture);
+    plane.setOrigin(plane.getLocalBounds().getCenter());
+    plane.setScale({1.8f, 1.8f});
+    plane.setPosition({733, 220});
+    target.draw(plane);
+
+    rect(target, 47, 70, 36, 4, gold);
+    label(target, font, U"CAMPA\u00d1A", 95, 66, 13, cyan);
+    label(target, font, "KILL 'EM ALL", 49, 105, 43, ink);
+    label(target, font, "KILL 'EM ALL", 45, 101, 43, ivory);
+
+    const auto option = [&](unsigned index, const sf::String& title, const sf::String& detail) {
+        const float y = 204.f + 82.f * index;
+        const bool selected = index == selectedOption;
+        rect(target, 45, y, 427, 69, selected ? sf::Color{24, 53, 57, 250} : sf::Color{11, 27, 34, 221});
+        rect(target, 45, y, selected ? 5.f : 2.f, 69, selected ? gold : seam);
+        if (selected)
+            label(target, font, ">", 59, y + 16, 12, gold);
+        label(target, font, title, 83, y + 13, 17, selected ? ivory : dim);
+        label(target, font, detail, 83, y + 43, 10, selected ? cyan : dim);
+    };
+    option(0, highest > 1 ? sf::String("CONTINUAR") : sf::String(U"EMPEZAR CAMPA\u00d1A"),
+           sf::String("NIVEL " + levelNumber(highest) + "  /  ") + levelNames[highest - 1]);
+    option(1, "ELEGIR NIVEL", availableCount(unlockedCount));
+    if (highest > 1)
+        option(2, "NUEVA PARTIDA", "DESPEGAR DESDE EL PUERTO");
+    if (saveFailed)
+        label(target, font, "PROGRESO SIN GUARDAR EN DISCO", 47, 502, 10, gold);
+    menuFooter(target, font, false, false);
+}
+
+void Hud::drawLevelSelect(sf::RenderTarget& target, unsigned selectedLevel,
+                          const std::bitset<Combat::levelCount>& unlockedLevels, bool saveFailed) const
+{
+    constexpr int pictureHeight = 231;
+    menuPanorama(target, portPreview, campaignPreviews, selectedLevel, pictureHeight);
+    const bool locked = !unlockedLevels.test(selectedLevel - 1);
+    rect(target, 0, 0, 960, 58, {12, 25, 32, 239});
+    rect(target, 0, 57, 960, 1, seam);
+    label(target, font, "ELEGIR NIVEL", 39, 17, 23, ivory);
+    const auto count = availableCount(unlockedLevels.count());
+    label(target, font, count, 921.f - count.size() * 11.f, 25, 11, cyan);
+    label(target, font, "NIVEL " + levelNumber(selectedLevel), 40, 101, 12, locked ? dim : cyan);
+    label(target, font, levelNames[selectedLevel - 1], 42, 131, 23, ink);
+    label(target, font, levelNames[selectedLevel - 1], 40, 129, 23, ivory);
+    if (locked)
+        label(target, font, sf::String(U"SUPER\u00c1 EL NIVEL ") + levelNumber(selectedLevel - 1) +
+              " PARA DESBLOQUEARLO", 40, 180, 10, gold);
+    else
+        label(target, font, std::string("JEFE  /  ") + StageBoss::name(selectedLevel), 40, 180, 11, ivory);
+
+    rect(target, 0, pictureHeight, 960, 545 - pictureHeight, ink);
+    rect(target, 0, pictureHeight, 960, 2, seam);
+    for (unsigned level = 1; level <= Combat::levelCount; ++level)
+    {
+        const bool available = unlockedLevels.test(level - 1);
+        const bool selected = level == selectedLevel;
+        const float x = level <= 5 ? 39.f : 493.f;
+        const float y = 249.f + ((level - 1) % 5) * 51.f;
+        const auto accent = available ? cyan : dim;
+        rect(target, x, y, 428, 42, selected ? sf::Color{40, 64, 66} : sf::Color{22, 38, 46});
+        rect(target, x, y, selected ? 5.f : 2.f, 42, selected ? gold : seam);
+        rect(target, x + 13, y + 8, 37, 26, selected ? gold : steel);
+        label(target, font, levelNumber(level), x + 18, y + 14, 13, selected ? ink : accent);
+        label(target, font, levelNames[level - 1], x + 64, y + 14, 13, selected || available ? ivory : dim);
+        if (!available)
+            padlock(target, x + 394, y + 12);
+        else if (selected)
+            label(target, font, ">", x + 394, y + 14, 13, gold);
+    }
+    if (saveFailed)
+        label(target, font, "PROGRESO SIN GUARDAR EN DISCO", 40, 513, 10, gold);
+    menuFooter(target, font, true, locked);
+}
+
 void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool muted,
-               std::uint64_t bestScore, bool powerNotice, bool pickupNotice) const
+               std::uint64_t bestScore, bool powerNotice, bool pickupNotice, bool saveFailed, bool restored) const
 {
     rect(target, 0, 0, 960, 60, ink);
     rect(target, 0, 2, 960, 2, steel);
@@ -435,18 +584,23 @@ void Hud::draw(sf::RenderTarget& target, const Combat& combat, bool paused, bool
     if (combat.finished())
         endPanel(target, font, combat, bestScore);
     else if (paused)
-        pausePanel(target, font, muted, mode);
+        pausePanel(target, font, muted, mode, saveFailed);
     else if (combat.levelTime() < 2.8f || combat.levelCleared())
     {
-        rect(target, 22, 524, 410, 58, {14, 27, 33, 233});
-        rect(target, 22, 524, 4, 58, combat.levelCleared() ? gold : cyan);
+        const bool checkpoint = combat.level() > 1 && !combat.levelCleared();
+        rect(target, 22, 524, 410, checkpoint ? 68.f : 58.f, {14, 27, 33, 233});
+        rect(target, 22, 524, 4, checkpoint ? 68.f : 58.f, combat.levelCleared() ? gold : cyan);
         label(target, font, levelNames[combat.level() - 1], 38, 534, 15, ivory);
         if (combat.levelCleared())
             label(target, font, "NIVEL SUPERADO", 38, 564, 10, gold);
         else if (combat.level() == 1)
             label(target, font, U"WASD / FLECHAS   DISPARO AUTOM\u00c1TICO", 38, 565, 9, dim);
         else
-            label(target, font, std::string("OBJETIVO  /  ") + StageBoss::name(combat.level()), 38, 565, 9, cyan);
+        {
+            label(target, font, std::string("OBJETIVO  /  ") + StageBoss::name(combat.level()), 38, 559, 9, cyan);
+            const char* status = saveFailed ? "SIN GUARDAR EN DISCO" : restored ? "EQUIPO RECUPERADO" : "PROGRESO GUARDADO";
+            label(target, font, status, 38, 576, 9, saveFailed ? gold : dim);
+        }
     }
     else if (combat.level() > 1 && !stageBossVisible && combat.bossArrival() - combat.levelTime() < 3.f)
     {

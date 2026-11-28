@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BattleRenderer.hpp"
+#include "CampaignProgress.hpp"
 #include "Combat.hpp"
 #include "GameAudio.hpp"
 #include "Hud.hpp"
@@ -21,13 +22,18 @@ public:
 
 private:
     using Key = sf::Keyboard::Scancode;
+    enum class Screen { CampaignMenu, LevelSelect, Flight };
     void resize(sf::Vector2u size);
     void keyPressed(Key key);
-    void restart();
+    void menuKeyPressed(Key key);
+    void openLevelSelect();
+    void launchLevel(unsigned level);
     void enableAudio();
     sf::Vector2f flightDirection() const;
     bool precisionFlight() const;
     void update(float dt);
+    void updateCombat(float slice);
+    void finishClearedTransition();
     void draw();
     void drawPlayer();
 
@@ -36,11 +42,18 @@ private:
     const PlayerTextures textures;
     Player player;
     Combat combat;
+    CampaignProgress progress;
     BattleRenderer battle;
     Hud hud;
     std::filesystem::path audioDirectory;
     std::optional<GameAudio> audio;
     std::set<Key> pressed;
+    Screen screen = Screen::CampaignMenu;
+    Screen selectorParent = Screen::CampaignMenu;
+    unsigned selectedOption = 0;
+    unsigned selectedLevel = 1;
+    bool saveFailed = false;
+    bool restored = false;
     bool paused = false;
     float powerNotice = 0.f;
     float pickupNotice = 0.f;
